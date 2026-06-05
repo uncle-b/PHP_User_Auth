@@ -1,0 +1,110 @@
+body{
+    margin:0px; padding:0px; 
+    height: 100vh;
+    width: 100vw;
+    background-color: blue; /* For browsers that do not support gradients */
+    background-image: linear-gradient(to bottom left, darkblue, lightblue);
+    display: flex;
+    justify-content: space-evenly;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.container{
+    background-color: rgba(255,255,255,.5);
+    margin: 2em;
+    max-width: 750px;
+    height: calc(100% - 6em);
+    width: calc(100% - 6em);
+    overflow: auto;
+    border-radius: .5em;
+    padding: 1em;
+}
+
+label{
+    display: inline-block;
+    width: 10em;
+}
+
+input{
+    margin-top: 2em;
+    height: 2em;
+    width: calc(100% - 16em);
+    border: 1px solid grey;
+    border-radius: .2em;
+    transition: .5s;
+}
+
+input[type=button]{
+    margin-top: 2em;
+    height: 2.3em;
+    width: auto;
+    border: none;
+    border-radius: .2em;
+    transition: .5s;
+    background-color: rgba(0,0,0,0);
+    color: darkblue;
+}
+
+input[type=button]:hover{
+  background-color: #ccccff;
+}
+
+h1{
+    width: calc(100%);
+    text-align: center;
+}
+
+/* HTML: <div class="loader"></div> */
+/* Source: https://css-loaders.com/dots/ */
+.loader {
+  width: 4px;
+  color: #000;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: 
+    19px -19px 0 0px, 38px -19px 0 0px, 57px -19px 0 0px,
+    19px 0     0 5px, 38px 0     0 5px, 57px 0     0 5px,
+    19px 19px  0 0px, 38px 19px  0 0px, 57px 19px  0 0px;
+  transform: translateX(-38px);
+  animation: l26 2s infinite linear;
+}
+@keyframes l26 {
+  12.5% {box-shadow: 
+    19px -19px 0 0px, 38px -19px 0 0px, 57px -19px 0 5px,
+    19px 0     0 5px, 38px 0     0 0px, 57px 0     0 5px,
+    19px 19px  0 0px, 38px 19px  0 0px, 57px 19px  0 0px}
+  25%   {box-shadow: 
+    19px -19px 0 5px, 38px -19px 0 0px, 57px -19px 0 5px,
+    19px 0     0 0px, 38px 0     0 0px, 57px 0     0 0px,
+    19px 19px  0 0px, 38px 19px  0 5px, 57px 19px  0 0px}
+  50%   {box-shadow: 
+    19px -19px 0 5px, 38px -19px 0 5px, 57px -19px 0 0px,
+    19px 0     0 0px, 38px 0     0 0px, 57px 0     0 0px,
+    19px 19px  0 0px, 38px 19px  0 0px, 57px 19px  0 5px}
+  62.5% {box-shadow: 
+    19px -19px 0 0px, 38px -19px 0 0px, 57px -19px 0 0px,
+    19px 0     0 5px, 38px 0     0 0px, 57px 0     0 0px,
+    19px 19px  0 0px, 38px 19px  0 5px, 57px 19px  0 5px}
+  75%   {box-shadow: 
+    19px -19px 0 0px, 38px -19px 0 5px, 57px -19px 0 0px,
+    19px 0     0 0px, 38px 0     0 0px, 57px 0     0 5px,
+    19px 19px  0 0px, 38px 19px  0 0px, 57px 19px  0 5px}
+  87.5% {box-shadow: 
+    19px -19px 0 0px, 38px -19px 0 5px, 57px -19px 0 0px,
+    19px 0     0 0px, 38px 0     0 5px, 57px 0     0 0px,
+    19px 19px  0 5px, 38px 19px  0 0px, 57px 19px  0 0px}
+}
+
+.loaderContainer{
+    display: flex;
+    flex-direction: row; 
+    justify-content: space-evenly; 
+    padding-top: 2em;
+}
+
+.errorMsg{
+  font-size: 70%;
+  color: darkred;
+  padding-left: .5em;
+}
+
+
