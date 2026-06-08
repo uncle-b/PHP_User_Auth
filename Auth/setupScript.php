@@ -63,18 +63,34 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
             After setup. please include the 'Auth2.php' module in every php page that requires authentication.
             Before you continue, please make sure that you have mySQL installed on your server and that you have sufficient rights to create database users and databases under your account.
         </p>
-        <h2>Sign in as administrator</h2>
-        <p>
-            Please provide your administrator credentials to continue. If you did not deliberately start this procedure, please do not continue. 
-        </p>
+        
         <div id="form">
-        <form method="POST" onsubmit="showLoader();">
+        <form method="POST" onsubmit="showLoader()">
+
+            <h2>Sign in as administrator</h2>
+            <p>
+                Please provide your administrator credentials to continue. If you did not deliberately start this procedure, please do not continue. 
+            </p>
             <label for="usr">Admin username:</label>
             <input type="text" id="usr" name="usr"><br>
             <label for="pwd">Admin Password:</label>
             <input type="password" id="pwd" name="pwd"><br>
+            <h2>Setup system SMTP mail account</h2>
+            <p>
+                Please provide a system email address to use for authentication emails. (e.g. verification emails, password resets, ect.).
+                Typically this would be a dedicated 'no-reply' email address. If you leave the below fields blank, you can set these manually later in the env/env.php file.
+            </p>
+            <label for="smtphost">SMTP Host (smtp.example.com):</label>
+            <input type="text" id="smtphost" name="smtphost"><br>
+            <label for="smtpport">System SMTP port number:</label>
+            <input type="number" id="smtpport" name="smtpport" value=587><br>
+            <label for="smtpeml">System SMTP email address:</label>
+            <input type="email" id="smtpeml" name="smtpeml"><br>
+            <label for="smtppwd">System SMTP email password:</label>
+            <input type="password" id="smtppwd" name="smtppwd"><br>
             <label for="submit"></label>
             <input type="submit" id="submit" name="submit">
+
         </form> 
         </div>
         <div id="loader" class="loaderContainer" style="display:none;">
@@ -96,6 +112,10 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
     $authDBName = "AuthDB_$AuthId";
     $authDBPwd = randomString(16);
     $authEncrypt = randomString(32);
+    $smtpHost = $_POST['smtphost'];
+    $smtpPort = $_POST['smtpport'];
+    $smtpEmail = $_POST['smtpeml'];
+    $smtpPwd = $_POST['smtppwd'];
 
     try {
         $conn = new PDO("mysql:host=$servername", $adminUsr, $adminPwd);
@@ -120,15 +140,16 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
                 user TINYTEXT NOT NULL,
                 email TINYTEXT NOT NULL,
                 passToken TINYTEXT,
-                nonce BINARY(32) NOT NULL,
+                nonce TINYTEXT NOT NULL,
                 loginId MEDIUMTEXT,
                 verified BOOLEAN DEFAULT FALSE,
                 modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )";
         $conn->exec($q);
 
-        //Create env directory
+        //Create env directory and limit permissions
         mkdir("env");
+        chmod("env", 0700);
 
         //Write environment variables to PHP file
         $envFile = fopen("env/env.php", "w");
@@ -138,17 +159,29 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
         $txt.= "\$AuthDBUser='$authDBUser';\n";
         $txt.= "\$AuthDBPwd='$authDBPwd';\n";
         $txt.= "\$AuthEncryptKey='$authEncrypt';\n";
+        $txt.= "\$smtpHost='$smtpHost';\n";
+        $txt.= "\$smtpPort='$smtpPort';\n";
+        $txt.= "\$smtpEmail='$smtpEmail';\n";
+        $txt.= "\$smtpPwd='$smtpPwd';\n";
         fwrite($envFile, $txt);
         fclose($envFile);
 
         //Create gitignore file
         $authDir = str_replace($_SERVER["DOCUMENT_ROOT"]."/","",getcwd());
         $gitFile = fopen($_SERVER["DOCUMENT_ROOT"]."/.gitignore", "a+");
-        $txt = "$authDir/env/   # ignore environment variables\n";
+        $txt = "$authDir/env/\n";
+        $txt.= "vendor/\n";
         fwrite($gitFile, $txt);
         fclose($gitFile);
 
-        #Database and user created successfully
+        //Create composer.json
+        $composer = fopen($_SERVER["DOCUMENT_ROOT"]."/composer.json", "a+");
+        $txt = '{"require": {"phpmailer/phpmailer": "^7.0.0"}}';
+        fwrite($composer, $txt);
+        fclose($composer);
+
+        // Install composer dependencies
+        exec("composer update");
 
         ?>
         <!DOCTYPE html>
@@ -160,14 +193,13 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
                 <div class="container">
                 <h1>Setup completed</h1>
                 <p>
-                    Secure authentication is now set up on this server. Please see the documentation for instructions on the correct use.
+                    Secure authentication is almost set up on this server. 
+                    Please run "composer update" in the terminal of the server to install the required dependencies. After that, please test if the application is capable of sending emails through the specified SMTP server by running the <a href="emailTst.php">Auth/emailTest.php</a> script. Please see the documentation for further use instructions.
                 </p>
                 </div>
             </body>
         </html>
         <?php
-
-
 
     } catch(PDOException $e) {
         error_log("Error: " . $e->getMessage());

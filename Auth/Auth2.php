@@ -1,4 +1,22 @@
 <?php
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+use PHPMailer\PHPMailer\Exception;
+
+// Load composer dependencies
+if(file_exists($_SERVER["DOCUMENT_ROOT"]."/vendor/autoload.php")){
+  require $_SERVER["DOCUMENT_ROOT"].'/vendor/autoload.php';  
+} else {
+  // Fallback for when composer is not installed.
+  if(file_exists($_SERVER["DOCUMENT_ROOT"]."/vendor/phpmailer/phpmailer/src/PHPMailer.php")){
+    require $_SERVER["DOCUMENT_ROOT"]."/vendor/phpmailer/phpmailer/src/PHPMailer.php";
+    require $_SERVER["DOCUMENT_ROOT"]."/vendor/phpmailer/phpmailer/src/SMTP.php"; 
+    require $_SERVER["DOCUMENT_ROOT"]."/vendor/phpmailer/phpmailer/src/Exception.php"; 
+  } else {
+    error_log("PHPMailer not found. Get it from https://github.com/phpmailer/phpmailer.");
+  }
+}
+
 include "DB.php";
 
 class Auth{
@@ -29,6 +47,11 @@ class Auth{
                 $this->setEnvVariable("AUTH_DB_PWD", $AuthDBPwd);
                 $this->setEnvVariable("AUTH_ENCRYPTION_KEY", $AuthEncryptKey);
                 $this->setEnvVariable("AUTH_SETUP_COMPLETED", $AuthSetupCompleted);
+                $this->setEnvVariable("AUTH_SMTP_HOST", $smtpHost);
+                $this->setEnvVariable("AUTH_SMTP_PORT", $smtpPort);
+                $this->setEnvVariable("AUTH_SMTP_EMAIL", $smtpEmail);   
+                $this->setEnvVariable("AUTH_SMTP_PWD", $smtpPwd);
+
                 if($_ENV["AUTH_SETUP_COMPLETED"]==true){
                     $this->active = true;
                 }
@@ -155,21 +178,36 @@ class Auth{
                 throw new Exception("Invalid database connection.");
             }
         }
-
-
-
-        
-
-
-
-
-
     }
 
+    public function testEmail($mailto, $displayName = "Authenticator"){
 
+        //Create an instance; passing `true` enables exceptions
+        $mail = new PHPMailer(true);
 
+        try {
+            //Server settings
+            $mail->SMTPDebug = SMTP::DEBUG_SERVER;                      //Enable verbose debug output
+            $mail->isSMTP();                                            //Send using SMTP
+            $mail->Host       = $_ENV["AUTH_SMTP_HOST"];                //Set the SMTP server to send through
+            $mail->SMTPAuth   = true;                                   //Enable SMTP authentication
+            $mail->Username   = $_ENV["AUTH_SMTP_EMAIL"];               //SMTP username
+            $mail->Password   = $_ENV["AUTH_SMTP_PWD"];                 //SMTP password
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;            //Enable implicit TLS encryption
+            $mail->Port       = $_ENV["AUTH_SMTP_PORT"];                //TCP port to connect to; use 587 if you have set `SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS`
 
+            //Recipients
+            $mail->setFrom($_ENV["AUTH_SMTP_EMAIL"], $displayName);
+            $mail->addAddress($mailto);                                 //Add a recipient
 
+            //Content
+            $mail->isHTML(true);                                  //Set email format to HTML
+            $mail->Subject = 'Auth library test email';
+            $mail->Body    = 'This email is sent to verify that the system email address is propoerly set up.';
+            $mail->AltBody = 'This email is sent to verify that the system email address is propoerly set up.';
+            $mail->send();
+        } catch (Exception $e) {error_log($mail->ErrorInfo);}
+    }
 }
 
 /*
