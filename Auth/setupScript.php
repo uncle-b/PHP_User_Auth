@@ -139,6 +139,7 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
                 userId INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 user TINYTEXT NOT NULL,
                 email TINYTEXT NOT NULL,
+                verificationCode MEDIUMINT(5) 0,
                 passToken TINYTEXT,
                 nonce TINYTEXT NOT NULL,
                 loginId MEDIUMTEXT,

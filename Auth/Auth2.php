@@ -143,11 +143,15 @@ class Auth{
         
     }
 
-    public function createUser($usr, $eml, $psw){
+    public function createUser($usr, $eml, $psw, $validationURL=null){
 
         $userExists = $this->userExists($usr);
         $emlValid = $this->validateEmail($eml);
         $pswValid = $this->validatePassword($psw);
+
+        if($validationURL===null){
+            $validationURL=$_SERVER['SERVER_NAME']."/Auth/dialogs/emailValidate.php";
+        }
 
         if($userExists === false && $emlValid===true && $pswValid===true){
 
@@ -163,20 +167,43 @@ class Auth{
             $decryptedData = $this->decryptDataArray($encryptedData);
             error_log($decryptedData["email"]);
 
+            $verificationCode = rand(10000,99999);
+
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
-                $query = "INSERT INTO `accounts`(`user`, `email`, `passToken`, `nonce`, `verified`) VALUES ('$usr','$encEml','$passToken','$nonce', 0)";
-                error_log($query);
+                $query = "INSERT INTO `accounts`(`user`, `email`, `verificationCode`,`passToken`, `nonce`, `verified`) VALUES ('$usr','$encEml',$verificationCode,'$passToken','$nonce', 0);";
                 $res = DB::query($con, $query);
-                error_log("res=$res");
                 if($res!==false){
-                    return true;
+                    
+                    $id = $con->insert_id;
+                    $validationURL.="?account=$id&key=$verificationCode";
+                    $emailText = "";
+                    $subject = "Subject";
+                    include "emails/emailValidation.php";
+                    $this->sendEmail($eml, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
+
                 }
                 return false;
             } else {
                 error_log("No db connection..");
                 throw new Exception("Invalid database connection.");
             }
+        }
+    }
+
+    public function verifyAccount($id,$key){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con){
+            $query = "SELECT * FROM `accounts` WHERE userId=$id AND verificationCode=$key;";
+            $res = DB::query($con, $query);
+            if($res!==false){
+                $query="UPDATE `accounts` SET verified=1 WHERE userId=$id";
+                return DB::query($con, $query);
+            }
+            return false;
+        } else {
+            error_log("No db connection..");
+            throw new Exception("Invalid database connection.");
         }
     }
 
@@ -205,6 +232,35 @@ class Auth{
             $mail->Subject = 'Auth library test email';
             $mail->Body    = 'This email is sent to verify that the system email address is propoerly set up.';
             $mail->AltBody = 'This email is sent to verify that the system email address is propoerly set up.';
+            $mail->send();
+        } catch (Exception $e) {error_log($mail->ErrorInfo);}
+    }
+
+    public function sendEmail($mailto, $subject, $message, $altMessage = "", $displayName = "Authenticator"){
+
+        //Create an instance; passing `true` enables exceptions
+        $mail = new PHPMailer(true);
+
+        try {
+            //Server settings
+            // $mail->SMTPDebug = SMTP::DEBUG_SERVER;                   //Enable verbose debug output
+            $mail->isSMTP();                                            //Send using SMTP
+            $mail->Host       = $_ENV["AUTH_SMTP_HOST"];                //Set the SMTP server to send through
+            $mail->SMTPAuth   = true;                                   //Enable SMTP authentication
+            $mail->Username   = $_ENV["AUTH_SMTP_EMAIL"];               //SMTP username
+            $mail->Password   = $_ENV["AUTH_SMTP_PWD"];                 //SMTP password
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;            //Enable implicit TLS encryption
+            $mail->Port       = $_ENV["AUTH_SMTP_PORT"];                //TCP port to connect to; use 587 if you have set `SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS`
+
+            //Recipients
+            $mail->setFrom($_ENV["AUTH_SMTP_EMAIL"], $displayName);
+            $mail->addAddress($mailto);                                 //Add a recipient
+
+            //Content
+            $mail->isHTML(true);                                  //Set email format to HTML
+            $mail->Subject = $subject;
+            $mail->Body    = $message;
+            $mail->AltBody = $altMessage;
             $mail->send();
         } catch (Exception $e) {error_log($mail->ErrorInfo);}
     }

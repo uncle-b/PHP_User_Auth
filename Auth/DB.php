@@ -19,7 +19,12 @@ class DB{
 	}
 
 	public static function query($connection, $query){
-		$result = mysqli_query($connection, $query) or die('Error:' . mysql_error());
+		try {
+			$result = mysqli_query($connection, $query);
+		} catch(Exception $e) {
+  			error_log(mysqli_error($connection));
+			$result = false;
+		}
 		return $result;
 	}
 
