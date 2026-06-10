@@ -18,6 +18,7 @@ if(file_exists($_SERVER["DOCUMENT_ROOT"]."/vendor/autoload.php")){
 }
 
 include "DB.php";
+include "JWT.php";
 
 class Auth{
     
@@ -201,6 +202,71 @@ class Auth{
                 return DB::query($con, $query);
             }
             return false;
+        } else {
+            error_log("No db connection..");
+            throw new Exception("Invalid database connection.");
+        }
+    }
+
+    public function signIn($usr, $psw){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con){
+            $passToken = $this->makePassToken($usr, $psw);
+            $query = "SELECT * FROM `accounts` WHERE `user`='$usr' AND `verified`=1 LIMIT 1";
+            $res = DB::query($con, $query);
+            
+            if($res !== false && mysqli_num_rows($res) > 0){
+                $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
+                $storedPassToken = $row['passToken'];
+                
+                if($storedPassToken === $passToken){
+                    // Password correct!
+                    $loginId = $this->randomString(32);
+                    $payload = array(
+                        "user" => $usr,
+                        "loginId" => $loginId,
+                        "issued" => time(),
+                        "expiry" => (time() + 31536000)  // = today + 1 year
+                    );
+
+                    $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
+                    $token = generateJWTHS256($payload, $encKey);
+                    
+                    $loginIds = $row['loginId'];
+                    if($loginIds == "" || $loginIds === null){
+                        $query = "UPDATE `accounts` SET `loginId`='$loginId' WHERE `user`='$usr';";
+                    } else {
+                        $loginIds .= "," . $loginId;
+                        $query = "UPDATE `accounts` SET `loginId`='$loginIds' WHERE `user`='$usr';";
+                    }
+                    
+                    $updateRes = DB::query($con, $query);
+                    
+                    if($updateRes !== false){
+                        return array(
+                            'error' => false,
+                            'message' => "Login successful.",
+                            'token' => $token,
+                            'loginId' => $loginId
+                        );
+                    } else {
+                        return array(
+                            'error' => true,
+                            'message' => "Failed to update login session."
+                        );
+                    }
+                } else {
+                    return array(
+                        'error' => true,
+                        'message' => "Login failed: Invalid credentials."
+                    );
+                }
+            } else {
+                return array(
+                    'error' => true,
+                    'message' => "Login failed: User not found or account not verified."
+                );
+            }
         } else {
             error_log("No db connection..");
             throw new Exception("Invalid database connection.");
