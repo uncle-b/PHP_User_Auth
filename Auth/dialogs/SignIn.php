@@ -6,6 +6,17 @@ include "../Auth2.php";
     <head>
         <link rel="stylesheet" href="dialogs.css">
         <script src="validation.js"></script>
+        <script>
+            function togglePassword(){
+                let pwd1 = document.getElementById("pwd");
+                
+                if(pwd1.type === "password"){
+                    pwd1.type = "text";
+                } else {
+                    pwd1.type = "password";
+                }
+            }
+        </script>
     </head>
     <body>
         <div class="container">
@@ -45,8 +56,9 @@ include "../Auth2.php";
                 <label for="usr">User name:</label>
                 <input type="text" id="usr" name="usr" value="<?php echo htmlspecialchars($usr) ?>" required><br>
                 <label for="pwd">Password:</label>
-                <input type="password" id="pwd" name="pwd" required><br>
-                <?php echo $errorMsg ?><br>
+                <input type="password" id="pwd" name="pwd" required>
+                <input type="button" onclick="togglePassword()" value="&#128065;" title="Show password"><br>
+                <?php echo $errorMsg ?>
                 <label for="submit"></label>
                 <input type="submit" id="submit" name="submit" value="Sign In">
             </form>

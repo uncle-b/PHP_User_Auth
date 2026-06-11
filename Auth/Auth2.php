@@ -218,12 +218,14 @@ class Auth{
             if($res !== false && mysqli_num_rows($res) > 0){
                 $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
                 $storedPassToken = $row['passToken'];
-                
+                $userId = $row['userId'];
+
                 if($storedPassToken === $passToken){
                     // Password correct!
                     $loginId = $this->randomString(32);
                     $payload = array(
                         "user" => $usr,
+                        "userId" => $userId,
                         "loginId" => $loginId,
                         "issued" => time(),
                         "expiry" => (time() + 31536000)  // = today + 1 year
