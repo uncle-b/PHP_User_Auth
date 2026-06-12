@@ -227,6 +227,7 @@ class Auth{
                         "user" => $usr,
                         "userId" => $userId,
                         "loginId" => $loginId,
+                        "bodyToken" => $this->randomString(16),
                         "issued" => time(),
                         "expiry" => (time() + 31536000)  // = today + 1 year
                     );
