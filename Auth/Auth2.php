@@ -24,6 +24,8 @@ class Auth{
     
     public $active = false;
     public $authDir = "";
+    public $userId = null;
+    public $username = null;
 
     function __construct(){
 
@@ -398,6 +400,74 @@ class Auth{
             error_log("No db connection..");
             throw new Exception("Invalid database connection.");
         }
+    }
+
+    public function authenticateRequest(){
+        // Get JWT token from X-AUTH-KEY cookie
+        $jwtToken = isset($_COOKIE['X-AUTH-KEY']) ? $_COOKIE['X-AUTH-KEY'] : null;
+        
+        // Get bodyToken from X-Auth-Body-Token header
+        $bodyToken = isset($_SERVER['HTTP_X_AUTH_BODY_TOKEN']) ? $_SERVER['HTTP_X_AUTH_BODY_TOKEN'] : null;
+        
+        if($jwtToken === null || $bodyToken === null){
+            return false;
+        }
+        
+        $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
+        $payload = checkJWTHS256($jwtToken, $encKey);
+        
+        if($payload === false){
+            // Invalid or tampered token
+            return false;
+        }
+        
+        // Decode payload if it's a string
+        if(is_string($payload)){
+            $payload = json_decode($payload, true);
+            if($payload === null){
+                return false;
+            }
+        }
+        
+        // Check token expiry
+        if(!isset($payload['expiry']) || $payload['expiry'] < time()){
+            // Token has expired
+            return false;
+        }
+        
+        // Validate bodyToken
+        if(!isset($payload['bodyToken']) || $payload['bodyToken'] !== $bodyToken){
+            return false;
+        }
+        
+        // Validate loginId and userId in database
+        if(!isset($payload['loginId']) || !isset($payload['userId'])){
+            return false;
+        }
+        
+        $loginId = $payload['loginId'];
+        $userId = $payload['userId'];
+        
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null){
+            error_log("No db connection..");
+            return false;
+        }
+        
+        // Check if this userId has the specified loginId
+        $query = "SELECT * FROM `accounts` WHERE `userId`=$userId AND `loginId` LIKE '%$loginId%' LIMIT 1";
+        $res = DB::query($con, $query);
+        
+        if($res === false || mysqli_num_rows($res) === 0){
+            // LoginId not found for this user
+            return false;
+        }
+        
+        // Authentication successful - set userId as public variable
+        $this->userId = $userId;
+        $this->username = isset($payload['user']) ? $payload['user'] : null;
+        
+        return true;
     }
 
     public function resetPassword($userId, $resetToken, $newPassword, $newPasswordRepeat = null){
