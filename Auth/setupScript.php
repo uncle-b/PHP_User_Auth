@@ -83,7 +83,7 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
             <label for="smtphost">SMTP Host (smtp.example.com):</label>
             <input type="text" id="smtphost" name="smtphost"><br>
             <label for="smtpport">System SMTP port number:</label>
-            <input type="number" id="smtpport" name="smtpport" value=587><br>
+            <input type="number" id="smtpport" name="smtpport" value=465><br>
             <label for="smtpeml">System SMTP email address:</label>
             <input type="email" id="smtpeml" name="smtpeml"><br>
             <label for="smtppwd">System SMTP email password:</label>
@@ -140,7 +140,7 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
                 user TINYTEXT NOT NULL,
                 email TINYTEXT NOT NULL,
                 emailHash CHAR(64) NOT NULL,
-                verificationCode MEDIUMINT(5) 0,
+                verificationCode MEDIUMINT(5) DEFAULT 0,
                 passToken TINYTEXT,
                 nonce TINYTEXT NOT NULL,
                 loginId MEDIUMTEXT,

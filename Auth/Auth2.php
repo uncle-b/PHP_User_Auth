@@ -223,11 +223,12 @@ class Auth{
                 if($storedPassToken === $passToken){
                     // Password correct!
                     $loginId = $this->randomString(32);
+                    $bodyToken= $this->randomString(16);
                     $payload = array(
                         "user" => $usr,
                         "userId" => $userId,
                         "loginId" => $loginId,
-                        "bodyToken" => $this->randomString(16),
+                        "bodyToken" => $bodyToken,
                         "issued" => time(),
                         "expiry" => (time() + 31536000)  // = today + 1 year
                     );
@@ -250,7 +251,8 @@ class Auth{
                             'error' => false,
                             'message' => "Login successful.",
                             'token' => $token,
-                            'loginId' => $loginId
+                            'loginId' => $loginId,
+                            'bodyToken' => $bodyToken
                         );
                     } else {
                         return array(

@@ -19,7 +19,7 @@ include "../Auth2.php";
         </script>
     </head>
     <body>
-        <div class="container">
+        < class="container">
             <h1>Sign In</h1>
             
             <?php
@@ -34,9 +34,22 @@ include "../Auth2.php";
                     $result = $auth->signIn($usr, $pwd);
                     if($result['error'] === false){ 
                         // Login successful
-                        echo "<div class='success'><p>Login successful!</p></div>";
-                        echo "<p>Token: <code>" . htmlspecialchars($result['token']) . "</code></p>";
-                        echo "<p>You can now use this token for authenticated requests.</p>";
+
+                        $cookie_name = "X-AUTH-KEY";
+                        $cookie_value = $result['token'];
+                        setcookie($cookie_name, $cookie_value, 0,"","",true,true);
+
+                        $bodyToken = $result['bodyToken'];
+
+                        ?>
+                        <h1>Login successful</h1>
+
+                        <input type='hidden' value='<?php echo $bodyToken; ?>' name='bodyToken'/>
+                        <p>
+                            Login succeeded. A httponly cookie with an authentication key has been set. This will be automatically sent back to the server with every request.
+                            Besides that, a hidden input, named 'bodyToken' is included in this page. The value of that should be returned with every request by setting a http header named 'X-Auth-Body-Token' containing this value.
+                        </p>
+                        <?php
                         exit;
                     } else {
                         $error = true;
