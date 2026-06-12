@@ -4,32 +4,23 @@ include "../Auth2.php";
 
 $JSON = json_decode(file_get_contents('php://input'), true);
 
-$email = isset($JSON['email']) ? $JSON['email'] : '';
+$username = isset($JSON['username']) ? $JSON['username'] : '';
 
-if($email === ''){
+if($username === ''){
     $result = array(
         'error' => true,
-        'message' => "Email is required."
-    );
-    echo json_encode($result);
-    exit;
-}
-
-if($auth->validateEmail($email) === false){
-    $result = array(
-        'error' => true,
-        'message' => "Invalid email address."
+        'message' => "Username is required."
     );
     echo json_encode($result);
     exit;
 }
 
 try{
-    $success = $auth->requestPasswordReset($email);
+    $success = $auth->requestPasswordReset($username);
     if($success === true){
         $result = array(
             'error' => false,
-            'message' => "If an account exists with this email address, a password reset link has been sent."
+            'message' => "If an account exists with this username, a password reset link has been sent."
         );
     } else {
         $result = array(

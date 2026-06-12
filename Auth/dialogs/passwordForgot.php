@@ -9,7 +9,7 @@ include "../Auth2.php";
     <body>
         <div class="container">
             <h1>Forgot Password</h1>
-            <p>Enter your email address and we will send you a password reset link.</p>
+            <p>Enter your username and we will send a password reset link to your email address.</p>
             
             <?php
             $error = false;
@@ -17,15 +17,15 @@ include "../Auth2.php";
             $errorMsg = "";
             $successMsg = "";
             
-            $email = isset($_POST["email"]) ? $_POST["email"] : "";
+            $username = isset($_POST["username"]) ? $_POST["username"] : "";
             
-            if($email !== ""){
-                if($auth->validateEmail($email)){
+            if($username !== ""){
+                if(strlen($username) >= 3){  // Basic validation
                     try{
-                        $result = $auth->requestPasswordReset($email);
+                        $result = $auth->requestPasswordReset($username);
                         if($result === true){ 
                             $success = true;
-                            $successMsg = "If an account exists with this email address, a password reset link has been sent.";
+                            $successMsg = "If an account exists with this username, a password reset link has been sent to the associated email address.";
                         } else {
                             $error = true;
                             $errorMsg = "Failed to process password reset request.";
@@ -37,7 +37,7 @@ include "../Auth2.php";
                     }
                 } else {
                     $error = true;
-                    $errorMsg = "Please enter a valid email address.";
+                    $errorMsg = "Please enter a valid username.";
                 }
             }
             
@@ -48,8 +48,8 @@ include "../Auth2.php";
             ?>
             
             <form method="POST">
-                <label for="email">Email address:</label>
-                <input type="email" id="email" name="email" value="<?php echo htmlspecialchars($email) ?>" required><br>
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" value="<?php echo htmlspecialchars($username) ?>" required><br>
                 <?php if($error) echo "<span class='errorMsg'>" . htmlspecialchars($errorMsg) . "</span><br>"; ?>
                 <label for="submit"></label>
                 <input type="submit" id="submit" name="submit" value="Send Reset Link">

@@ -156,12 +156,12 @@ class Auth{
 
         if($userExists === false && $emlValid===true && $pswValid===true){
 
-
             $passToken = $this->makePassToken($usr, $psw);
             $encryptedData = $this->encryptDataArray(["email"=>$eml]);
             
             $encEml = $encryptedData["email"];
             $nonce = $encryptedData["nonce"];
+            $emailHash = hash('sha256', strtolower($eml));
 
             error_log($encEml);
 
@@ -172,7 +172,7 @@ class Auth{
 
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
-                $query = "INSERT INTO `accounts`(`user`, `email`, `verificationCode`,`passToken`, `nonce`, `verified`) VALUES ('$usr','$encEml',$verificationCode,'$passToken','$nonce', 0);";
+                $query = "INSERT INTO `accounts`(`user`, `email`, `emailHash`, `verificationCode`,`passToken`, `nonce`, `verified`) VALUES ('$usr','$encEml','$emailHash',$verificationCode,'$passToken','$nonce', 0);";
                 $res = DB::query($con, $query);
                 if($res!==false){
                     
@@ -334,58 +334,64 @@ class Auth{
         } catch (Exception $e) {error_log($mail->ErrorInfo);}
     }
 
-    public function requestPasswordReset($email, $resetURL = null){
+    public function requestPasswordReset($username, $resetURL = null){
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
             if($resetURL === null){
                 $resetURL = $_SERVER['SERVER_NAME']."/Auth/dialogs/passwordReset.php";
             }
             
-            if($this->validateEmail($email) === false){
-                return false;
-            }
-            
             $resetToken = $this->randomString(32);
             $resetExpiry = time() + 3600; // 1 hour expiry
             
-            $query = "SELECT * FROM `accounts` WHERE `verified`=1";
+            $query = "SELECT * FROM `accounts` WHERE `user`='$username' AND `verified`=1 LIMIT 1";
             $res = DB::query($con, $query);
             
             if($res !== false && mysqli_num_rows($res) > 0){
-                $foundAccount = false;
+                $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
+                $userId = $row['userId'];
+                $decryptedData = $this->decryptDataArray([
+                    "email" => $row['email'],
+                    "nonce" => $row['nonce']
+                ]);
                 
-                while($row = mysqli_fetch_array($res, MYSQLI_ASSOC)){
-                    $decryptedData = $this->decryptDataArray([
-                        "email" => $row['email'],
-                        "nonce" => $row['nonce']
-                    ]);
+                $email = $decryptedData['email'];
+                
+                $updateQuery = "UPDATE `accounts` SET `resetToken`='$resetToken', `resetExpiry`=$resetExpiry WHERE `userId`=$userId";
+                $updateRes = DB::query($con, $updateQuery);
+                
+                if($updateRes !== false){
+                    $resetLink = $resetURL . "?account=$userId&token=$resetToken";
+                    $subject = "Password Reset Request";
                     
-                    if($decryptedData !== false && $decryptedData['email'] === $email){
-                        $userId = $row['userId'];
-                        $foundAccount = true;
-                        
-                        $updateQuery = "UPDATE `accounts` SET `resetToken`='$resetToken', `resetExpiry`=$resetExpiry WHERE `userId`=$userId";
-                        $updateRes = DB::query($con, $updateQuery);
-                        
-                        if($updateRes !== false){
-                            $resetLink = $resetURL . "?account=$userId&token=$resetToken";
-                            $subject = "Password Reset Request";
-                            
-                            $message = "";
-                            $altMessage = "";
-                            include "emails/passwordReset.php";
-                            
-                            $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
-                            return true;
-                        }
-                        break; // Only reset the first verified account found
-                    }
+                    $message = "";
+                    $altMessage = "";
+                    include "emails/passwordReset.php";
+                    
+                    $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
+                    return true;
                 }
             }
             
-            // Always return true to prevent email enumeration
-            // (don't reveal whether email exists in system)
+            // Always return true to prevent username enumeration
             return true;
+        } else {
+            error_log("No db connection..");
+            throw new Exception("Invalid database connection.");
+        }
+    }
+
+    public function getUserByEmail($email){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con){
+            $emailHash = hash('sha256', strtolower($email));
+            $query = "SELECT * FROM `accounts` WHERE `emailHash`='$emailHash' AND `verified`=1 LIMIT 1";
+            $res = DB::query($con, $query);
+            
+            if($res !== false && mysqli_num_rows($res) > 0){
+                return mysqli_fetch_array($res, MYSQLI_ASSOC);
+            }
+            return false;
         } else {
             error_log("No db connection..");
             throw new Exception("Invalid database connection.");
