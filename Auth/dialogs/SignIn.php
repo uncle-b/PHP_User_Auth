@@ -62,7 +62,7 @@ include "../Auth2.php";
                 <label for="submit"></label>
                 <input type="submit" id="submit" name="submit" value="Sign In">
             </form>
-            <p><a href="SignUp.php">Create an account</a></p>
+            <p><a href="SignUp.php">Create an account</a> | <a href="passwordForgot.php">Forgot password?</a></p>
             
             <?php
             }

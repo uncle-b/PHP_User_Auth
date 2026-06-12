@@ -333,6 +333,102 @@ class Auth{
             $mail->send();
         } catch (Exception $e) {error_log($mail->ErrorInfo);}
     }
+
+    public function requestPasswordReset($email, $resetURL = null){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con){
+            if($resetURL === null){
+                $resetURL = $_SERVER['SERVER_NAME']."/Auth/dialogs/passwordReset.php";
+            }
+            
+            $encryptedEmail = $this->encryptDataArray(["email" => $email]);
+            $encEml = $encryptedEmail["email"];
+            $nonce = $encryptedEmail["nonce"];
+            
+            $resetToken = $this->randomString(32);
+            $resetExpiry = time() + 3600; // 1 hour expiry
+            
+            $query = "SELECT * FROM `accounts` WHERE `email`='$encEml' AND `nonce`='$nonce' LIMIT 1";
+            $res = DB::query($con, $query);
+            
+            if($res !== false && mysqli_num_rows($res) > 0){
+                $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
+                $userId = $row['userId'];
+                
+                $updateQuery = "UPDATE `accounts` SET `resetToken`='$resetToken', `resetExpiry`=$resetExpiry WHERE `userId`=$userId";
+                $updateRes = DB::query($con, $updateQuery);
+                
+                if($updateRes !== false){
+                    $resetLink = $resetURL . "?account=$userId&token=$resetToken";
+                    $subject = "Password Reset Request";
+                    
+                    $emailText = "";
+                    $message = "";
+                    $altMessage = "";
+                    include "emails/passwordReset.php";
+                    
+                    $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
+                    return true;
+                }
+            }
+            return false;
+        } else {
+            error_log("No db connection..");
+            throw new Exception("Invalid database connection.");
+        }
+    }
+
+    public function resetPassword($userId, $resetToken, $newPassword, $newPasswordRepeat = null){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con){
+            if($newPasswordRepeat !== null && $newPassword !== $newPasswordRepeat){
+                return array(
+                    'error' => true,
+                    'message' => "Passwords do not match."
+                );
+            }
+            
+            if(!$this->validatePassword($newPassword)){
+                return array(
+                    'error' => true,
+                    'message' => "Password does not meet requirements."
+                );
+            }
+            
+            $query = "SELECT * FROM `accounts` WHERE `userId`=$userId AND `resetToken`='$resetToken' AND `resetExpiry` > " . time() . " LIMIT 1";
+            $res = DB::query($con, $query);
+            
+            if($res !== false && mysqli_num_rows($res) > 0){
+                $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
+                $user = $row['user'];
+                
+                $newPassToken = $this->makePassToken($user, $newPassword);
+                
+                $updateQuery = "UPDATE `accounts` SET `passToken`='$newPassToken', `loginId`='', `resetToken`='', `resetExpiry`=0 WHERE `userId`=$userId";
+                $updateRes = DB::query($con, $updateQuery);
+                
+                if($updateRes !== false){
+                    return array(
+                        'error' => false,
+                        'message' => "Password has been reset successfully."
+                    );
+                } else {
+                    return array(
+                        'error' => true,
+                        'message' => "Failed to update password."
+                    );
+                }
+            } else {
+                return array(
+                    'error' => true,
+                    'message' => "Invalid or expired reset token."
+                );
+            }
+        } else {
+            error_log("No db connection..");
+            throw new Exception("Invalid database connection.");
+        }
+    }
 }
 
 /*
