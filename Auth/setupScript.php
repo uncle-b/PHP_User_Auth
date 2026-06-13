@@ -50,8 +50,8 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
         <link rel="stylesheet" href="dialogs/dialogs.css">
         <script>
             function showLoader(){
-                document.getELementById("loader").style.display = "flex";
-                document.getELementById("form").style.display = "none";
+                document.getElementById("form").style.display = "none";
+                document.getElementById("loader").style.display = "flex";
             }
         </script>
     </head>
@@ -95,7 +95,6 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
         </div>
         <div id="loader" class="loaderContainer" style="display:none;">
             <div class="loader"></div>
-        </div>
         </div>
     </body>
 </html>
@@ -200,7 +199,7 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
                 <h1>Setup completed</h1>
                 <p>
                     Secure authentication is almost set up on this server. 
-                    Please run "composer update" in the terminal of the server to install the required dependencies. After that, please test if the application is capable of sending emails through the specified SMTP server by running the <a href="emailTst.php">Auth/emailTest.php</a> script. Please see the documentation for further use instructions.
+                    Please run "composer update" in the terminal of the server to install the required dependencies. After that, please test if the application is capable of sending emails through the specified SMTP server by running the <a href="emailTest.php">Auth/emailTest.php</a> script. Please see the documentation for further use instructions.
                 </p>
                 </div>
             </body>

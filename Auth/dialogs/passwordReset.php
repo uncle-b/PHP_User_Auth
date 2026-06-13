@@ -41,6 +41,16 @@ include "../Auth2.php";
                 }
             }
         </script>
+        <script>
+            function showLoader(){
+                var form = document.getElementById("form");
+                var loader = document.getElementById("loader");
+                if(form && loader){
+                    form.style.display = "none";
+                    loader.style.display = "flex";
+                }
+            }
+        </script>
     </head>
     <body>
         <div class="container">
@@ -91,7 +101,8 @@ include "../Auth2.php";
                 } else {
             ?>
             
-            <form method="POST">
+            <div id="form">
+            <form method="POST" onsubmit="showLoader()">
                 <input type="hidden" name="account" value="<?php echo htmlspecialchars($account) ?>">
                 <input type="hidden" name="token" value="<?php echo htmlspecialchars($token) ?>">
                 <label for="pwd">New Password:</label>
@@ -103,6 +114,10 @@ include "../Auth2.php";
                 <label for="submit"></label>
                 <input type="submit" id="submit" name="submit" value="Reset Password" disabled>
             </form>
+            </div>
+            <div id="loader" class="loaderContainer" style="display:none;">
+                <div class="loader"></div>
+            </div>
             
             <?php
                 }

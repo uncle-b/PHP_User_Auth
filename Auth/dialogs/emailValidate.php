@@ -18,7 +18,7 @@ if($result){
         <div class="container">
             <h1>Email verified</h1>
             <p>
-                Your email address has been verified. You can now log in.
+                Your email address has been verified. You can now <a href="SignIn.php">log in</a>log in.
             </p>
         </div>    
     </body>

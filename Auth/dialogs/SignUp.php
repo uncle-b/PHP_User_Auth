@@ -50,6 +50,16 @@ include "../Auth2.php";
             }
 
         </script>
+        <script>
+            function showLoader(){
+                var form = document.getElementById("form");
+                var loader = document.getElementById("loader");
+                if(form && loader){
+                    form.style.display = "none";
+                    loader.style.display = "flex";
+                }
+            }
+        </script>
 <?php
 $error = false;
 $usrErrorMsg = "";
@@ -85,8 +95,8 @@ if($usr == "" || $pwd == "" || $eml == "" || $error == true){
     </head>
     <body>
         <div class="container">
-            <h1>Sign up</h1>
-            <form method="POST">
+            <div id="form">
+            <form method="POST" onsubmit="showLoader()">
                 <label for="usr">User name:</label>
                 <input type="text" id="usr" name="usr" value="<?php echo $usr ?>" onkeyup="validateInput();"><br><?php echo $usrErrorMsg ?>
                 <label for="email">Email address:</label>
@@ -99,6 +109,10 @@ if($usr == "" || $pwd == "" || $eml == "" || $error == true){
                 <label for="submit"></label>
                 <input type="submit" id="submit" name="submit" disabled>
             </form>
+            </div>
+            <div id="loader" class="loaderContainer" style="display:none;">
+                <div class="loader"></div>
+            </div>
         </div>    
     </body>
 

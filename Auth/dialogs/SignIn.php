@@ -96,10 +96,20 @@ if($usr !== "" && $pwd !== ""){
                     pwd1.type = "password";
                 }
             }
+            
+            function showLoader(){
+                var form = document.getElementById("form");
+                var loader = document.getElementById("loader");
+                if(form && loader){
+                    form.style.display = "none";
+                    loader.style.display = "flex";
+                }
+            }
         </script>
     </head>
     <body>
         <div class="container">
+            <div id="form">
             <?php if($mfaPending): ?>
                 <h1>Two-Factor Authentication</h1>
                 <p>A 4-digit verification code has been sent to your email address. Please enter it below.</p>
@@ -108,7 +118,7 @@ if($usr !== "" && $pwd !== ""){
                     <span class='errorMsg'><?php echo htmlspecialchars($mfaErrorMsg); ?></span><br>
                 <?php endif; ?>
                 
-                <form method="POST">
+                <form method="POST" onsubmit="showLoader()">
                     <input type="hidden" name="userId" value="<?php echo htmlspecialchars($mfaUserId); ?>">
                     <input type="hidden" name="username" value="<?php echo htmlspecialchars($mfaUsername); ?>">
                     <input type="hidden" name="password" value="<?php echo htmlspecialchars($mfaPassword); ?>">
@@ -126,7 +136,7 @@ if($usr !== "" && $pwd !== ""){
                     <label></label><span class='errorMsg'><?php echo htmlspecialchars($errorMsg); ?></span><br>
                 <?php endif; ?>
                 
-                <form method="POST">
+                <form method="POST" onsubmit="showLoader()">
                     <label for="usr">User name:</label>
                     <input type="text" id="usr" name="usr" value="<?php echo htmlspecialchars($usr) ?>" required><br>
                     <label for="pwd">Password:</label>
@@ -138,6 +148,10 @@ if($usr !== "" && $pwd !== ""){
                 <br>
                 <label></label><span><a href="SignUp.php">Create an account</a> | <a href="passwordForgot.php">Forgot password?</a></span>
             <?php endif; ?>
+            </div>
+            <div id="loader" class="loaderContainer" style="display:none;">
+                <div class="loader"></div>
+            </div>
         </div>    
     </body>
 </html>

@@ -5,6 +5,16 @@ include "../Auth2.php";
 <html>
     <head>
         <link rel="stylesheet" href="dialogs.css">
+        <script>
+            function showLoader(){
+                var form = document.getElementById("form");
+                var loader = document.getElementById("loader");
+                if(form && loader){
+                    form.style.display = "none";
+                    loader.style.display = "flex";
+                }
+            }
+        </script>
     </head>
     <body>
         <div class="container">
@@ -47,7 +57,8 @@ include "../Auth2.php";
             } else {
             ?>
             
-            <form method="POST">
+            <div id="form">
+            <form method="POST" onsubmit="showLoader()">
                 <label for="username">Username:</label>
                 <input type="text" id="username" name="username" value="<?php echo htmlspecialchars($username) ?>" required><br>
                 <?php if($error) echo "<span class='errorMsg'>" . htmlspecialchars($errorMsg) . "</span><br>"; ?>
@@ -55,6 +66,10 @@ include "../Auth2.php";
                 <input type="submit" id="submit" name="submit" value="Send Reset Link">
             </form>
             <p><a href="SignIn.php">Back to Sign In</a></p>
+            </div>
+            <div id="loader" class="loaderContainer" style="display:none;">
+                <div class="loader"></div>
+            </div>
             
             <?php
             }
