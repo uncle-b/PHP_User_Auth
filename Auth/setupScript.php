@@ -146,6 +146,8 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
                 loginId MEDIUMTEXT,
                 resetToken TINYTEXT,
                 resetExpiry INT(11) DEFAULT 0,
+                mfaCode CHAR(4),
+                mfaExpiry INT(11) DEFAULT 0,
                 verified BOOLEAN DEFAULT FALSE,
                 modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )";

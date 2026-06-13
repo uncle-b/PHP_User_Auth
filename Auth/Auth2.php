@@ -26,6 +26,7 @@ class Auth{
     public $authDir = "";
     public $userId = null;
     public $username = null;
+    public $mfaCode = null;
 
     function __construct(){
 
@@ -468,6 +469,97 @@ class Auth{
         $this->username = isset($payload['user']) ? $payload['user'] : null;
         
         return true;
+    }
+
+    private function generateMFACode(){
+        return str_pad(rand(0, 9999), 4, '0', STR_PAD_LEFT);
+    }
+
+    public function initiateMFA($username, $password){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null){
+            error_log("No db connection..");
+            throw new Exception("Invalid database connection.");
+        }
+        
+        $passToken = $this->makePassToken($username, $password);
+        $query = "SELECT * FROM `accounts` WHERE `user`='$username' AND `verified`=1 LIMIT 1";
+        $res = DB::query($con, $query);
+        
+        if($res !== false && mysqli_num_rows($res) > 0){
+            $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
+            $storedPassToken = $row['passToken'];
+            
+            if($storedPassToken === $passToken){
+                $mfaCode = $this->generateMFACode();
+                $mfaExpiry = time() + 900; // 15 minutes expiry
+                $userId = $row['userId'];
+                $email = $this->decryptDataArray([
+                    "email" => $row['email'],
+                    "nonce" => $row['nonce']
+                ])['email'];
+                
+                $updateQuery = "UPDATE `accounts` SET `mfaCode`='$mfaCode', `mfaExpiry`=$mfaExpiry WHERE `userId`=$userId";
+                $updateRes = DB::query($con, $updateQuery);
+                
+                if($updateRes !== false){
+                    $subject = "Your MFA Code";
+                    $message = "Your Multi-Factor Authentication code is: <strong>$mfaCode</strong><br><br>This code will expire in 15 minutes.";
+                    $altMessage = "Your Multi-Factor Authentication code is: $mfaCode. This code will expire in 15 minutes.";
+                    
+                    $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
+                    
+                    return array(
+                        'error' => false,
+                        'message' => "MFA code sent to your email.",
+                        'userId' => $userId,
+                        'username' => $username
+                    );
+                }
+            }
+        }
+        
+        return array(
+            'error' => true,
+            'message' => "Invalid username or password."
+        );
+    }
+
+    public function verifyMFA($userId, $code, $password = null, $username = null){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null){
+            error_log("No db connection..");
+            throw new Exception("Invalid database connection.");
+        }
+        
+        $query = "SELECT * FROM `accounts` WHERE `userId`=$userId AND `mfaExpiry` > " . time() . " LIMIT 1";
+        $res = DB::query($con, $query);
+        
+        if($res !== false && mysqli_num_rows($res) > 0){
+            $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
+            $storedCode = $row['mfaCode'];
+            
+            if($storedCode === $code){
+                // MFA verified - clear the code and proceed with login
+                $clearQuery = "UPDATE `accounts` SET `mfaCode`='', `mfaExpiry`=0 WHERE `userId`=$userId";
+                DB::query($con, $clearQuery);
+                
+                // Now perform the actual sign in
+                if($username !== null && $password !== null){
+                    return $this->signIn($username, $password);
+                }
+                
+                return array(
+                    'error' => false,
+                    'message' => "MFA verification successful."
+                );
+            }
+        }
+        
+        return array(
+            'error' => true,
+            'message' => "Invalid or expired MFA code."
+        );
     }
 
     public function resetPassword($userId, $resetToken, $newPassword, $newPasswordRepeat = null){
