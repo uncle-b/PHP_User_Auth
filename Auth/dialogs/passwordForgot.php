@@ -52,8 +52,20 @@ include "../Auth2.php";
             }
             
             if($success === true){
-                echo "<div class='success'><p>" . htmlspecialchars($successMsg) . "</p></div>";
-                echo "<p><a href='SignIn.php'>Back to Sign In</a></p>";
+                ?>
+                <!DOCTYPE html>
+                <html>
+                    <head><link rel="stylesheet" href="dialogs.css"></head>
+                    <body>
+                        <div class="container">
+                            <p>
+                                <?php echo htmlspecialchars($successMsg); ?>
+                            </p>
+                            <p><a href='SignIn.php'>Back to Sign In</a></p>
+                        </div>
+                    </body>
+                </html>
+                <?php
             } else {
             ?>
             

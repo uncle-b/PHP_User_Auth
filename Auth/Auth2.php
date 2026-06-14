@@ -185,7 +185,7 @@ class Auth{
                     $subject = "Subject";
                     include "emails/emailValidation.php";
                     $this->sendEmail($eml, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
-
+                    return true;
                 }
                 return false;
             } else {
