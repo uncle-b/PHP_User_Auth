@@ -32,6 +32,7 @@ composer update
 If you do not have composer installed, you can also manually create a vendor/phpmailer/phpmailer directory in your document root and copy the PHPMailer repository there.
 
 4. **Testing**:
+
 explore the basic functionality with the basic tempalate dialogs in the Auth/dialogs folder:
 - 'SignUp.php' provides a basic user registration flow.
 - 'SignIn.php' provides the basic login functionality.
