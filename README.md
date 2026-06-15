@@ -33,7 +33,7 @@ If you do not have composer installed, you can also manually create a vendor/php
 
 4. **Testing**:
 
-explore the basic functionality with the basic tempalate dialogs in the Auth/dialogs folder:
+explore the basic functionality with the basic template dialogs in the Auth/dialogs folder:
 - 'SignUp.php' provides a basic user registration flow.
 - 'SignIn.php' provides the basic login functionality.
 - 'passwordForgot' provides basic password recovery.
