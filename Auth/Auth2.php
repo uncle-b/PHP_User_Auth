@@ -564,10 +564,9 @@ class Auth{
                 $updateRes = DB::query($con, $updateQuery);
                 
                 if($updateRes !== false){
-                    $subject = "Your MFA Code";
-                    $message = "Your Multi-Factor Authentication code is: <strong>$mfaCode</strong><br><br>This code will expire in 15 minutes.";
-                    $altMessage = "Your Multi-Factor Authentication code is: $mfaCode. This code will expire in 15 minutes.";
-                    
+
+                    include "emails/MFAMessage.php";
+
                     $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
                     
                     return array(
