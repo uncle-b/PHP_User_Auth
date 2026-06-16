@@ -15,9 +15,9 @@ MIT
 
 Clone the repository to your document root 
 
-    ```bash
-    git clone https://codeberg.org/uncle-b/PHP_User_Auth.git
-    ```
+```bash
+git clone https://codeberg.org/uncle-b/PHP_User_Auth.git
+```
 2. **Run the setup script:**
 
 visit localhost/Auth/setupScript.php in your browser. 'localhost' can of course be replaced by your own domain if that is more convenient. If you follow the instructions, this will automatically create a dedicated SQL database, database user and accounts table required for the authentication logic to work.
@@ -26,13 +26,14 @@ visit localhost/Auth/setupScript.php in your browser. 'localhost' can of course 
 
 When the setup script has finished, the last step is to install the external PHPMailer libary that is required for sending system emails. Using composer you can do this by typing below command in your terminal:
 
-    ```bash
-    composer update
-    ```
+```bash
+composer update
+```
 If you do not have composer installed, you can also manually create a vendor/phpmailer/phpmailer directory in your document root and copy the PHPMailer repository there.
 
 4. **Testing**:
-explore the basic functionality with the basic tempalate dialogs in the Auth/dialogs folder:
+
+explore the basic functionality with the basic template dialogs in the Auth/dialogs folder:
 - 'SignUp.php' provides a basic user registration flow.
 - 'SignIn.php' provides the basic login functionality.
 - 'passwordForgot' provides basic password recovery.
@@ -43,18 +44,17 @@ explore the basic functionality with the basic tempalate dialogs in the Auth/dia
 At the backend, any PHP Script requiring authentication should include the Auth2.php file. This will automatically produce a $auth object containing status indicators and authentication methods. After including the Auth2.php run the $auth->authenticateRequest() method to authenticate the client request.
 
 In code this looks like:
-    ```bash
-    <?php
-        include Auth2.php;
-        $authentic = $auth->authenticateRequest();
-        if($authentic){
-            $userId = $auth->userId;
-            $userName = $auth->username;
-            echo "Request authorized for user $userName with user Id $userId.";
-        } else {
-            echo "unauthorized request.";
-        }
-    ```
+```bash
+    include Auth2.php;
+    $authentic = $auth->authenticateRequest();
+    if($authentic){
+        $userId = $auth->userId;
+        $userName = $auth->username;
+        echo "Request authorized for user $userName with user Id $userId.";
+    } else {
+        echo "unauthorized request.";
+    }
+```
 
 At the font end, every request that requires authorization should carry a valid JWT token in a httponly cookie named 'X-AUTH-KEY'. This is automatically set after a successfull login and automatically returned to the server with every client request from a browser.
 
