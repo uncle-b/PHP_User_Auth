@@ -15,7 +15,6 @@ if(gettype ($payload) != 'string'){
 $encoded_header = base64_encode('{"alg": "HS256","typ": "JWT"}');
 
 // base64 encodes the payload json
-// {"country": "Romania","name": "Octavia Anghel","email": "octaviaanghel@gmail.com"}
 $encoded_payload = base64_encode($payload);
 
 // base64 strings are concatenated to one that looks like this
@@ -33,9 +32,6 @@ return  $jwt_token;
 }
 
 function checkJWTHS256($jwt_token, $privateKey){
-
-// $jwt_token = 'eyJhbGciOiAiSFMyNTYiLCJ0eXAiOiAiSldUIn0=.eyJjb3VudHJ5IjogIlJvbWFuaWEiLCJuYW1lIjogIk9jdGF2aWEgQW5naGVsIiwiZW1haWwiOiAib2N0YXZpYWFuZ2hlbEBnbWFpbC5jb20ifQ==.gbB+B063g+kwsoc4L3B1Bu2wM+VEBElwPiLOb0fj2SE=';
-// $privateKey = 'Octaviasecretkey';
 
 // Split a string by '.' 
 $jwt_values = explode('.', $jwt_token);
@@ -74,20 +70,4 @@ function random_str($length){
     return $res;
 }
 
-// echo random_str(64);
-
-// $privateKey = "secure";
-
-// $payload = array(
-//  "User" => "Bart",
-//  "Role" => "test"
-// );
-
-// $token = generateJWTHS256($payload, $privateKey);
-//        echo "token = " . $token . "<br />";
-// $valid  = checkJWTHS256($token, $privateKey); 
-//         echo "Token is valid = " . $valid;
-
-
-?> 
 

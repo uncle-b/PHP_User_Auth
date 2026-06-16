@@ -27,6 +27,7 @@ class Auth{
     public $userId = null;
     public $username = null;
     public $mfaCode = null;
+    public $loginId = null;
 
     function __construct(){
 
@@ -87,9 +88,7 @@ class Auth{
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
             $query = "SELECT user FROM `accounts` WHERE `user`='$user'";
-            error_log($query);
             $res = DB::singleResultQuery($con, $query, "user");
-            error_log("res=$res");
             if($res!==false){
                 return true;
             }
@@ -166,11 +165,7 @@ class Auth{
             $nonce = $encryptedData["nonce"];
             $emailHash = hash('sha256', strtolower($eml));
 
-            error_log($encEml);
-
             $decryptedData = $this->decryptDataArray($encryptedData);
-            error_log($decryptedData["email"]);
-
             $verificationCode = rand(10000,99999);
 
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
@@ -280,6 +275,62 @@ class Auth{
             throw new Exception("Invalid database connection.");
         }
     }
+
+    public function signOut($onAllAccounts=false){
+
+        if($this->loginId==null || $this->userId==null){
+            $authenticated = $this->authenticateRequest();
+        }
+
+        if($this->userId!==null && $this->loginId!==null){
+            
+            $id = $this->userId;
+            $loginId = $this->loginId;
+            $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+            if($con){
+                $query = "SELECT * FROM `accounts` WHERE userId=$id AND loginId LIKE '%$loginId%' LIMIT 1;";
+                $res = DB::query($con, $query);
+                
+                if($res !== false && mysqli_num_rows($res) > 0){
+                    $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
+                    $loginIds = $row['loginId'];
+
+                    if($loginIds!==""){
+                        if($onAllAccounts == false){
+                            $ids=explode(",",$loginIds);
+                            for($i=0;$i<count($ids);$i++){
+                                if($ids[$i] === $loginId){
+                                    array_splice($ids, $i, 1);
+                                    break;
+                                }
+                            }
+                            $loginIds=join(",", $ids);
+                        } else {
+                            $loginIds="";
+                        }
+                    }
+
+                    $query="UPDATE `accounts` SET loginId='$loginIds' WHERE userId=$id";
+                    return DB::query($con, $query);
+                }
+                return false;
+            } else {
+                error_log("No db connection..");
+                throw new Exception("Invalid database connection.");
+            }
+
+
+
+
+        }
+
+        
+
+
+
+
+    }
+
 
     public function testEmail($mailto, $displayName = "Authenticator"){
 
@@ -403,20 +454,30 @@ class Auth{
         }
     }
 
+
+    public function isSecure() {
+        $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || $_SERVER['SERVER_PORT'] == 443;
+        if($secure === false){
+            error_log("WARNING: You are not using HTTPS! Please enable HTTPS for secure client communication!");
+        }
+    }
+
     public function authenticateRequest(){
+
         // Get JWT token from X-AUTH-KEY cookie
         $jwtToken = isset($_COOKIE['X-AUTH-KEY']) ? $_COOKIE['X-AUTH-KEY'] : null;
         
         // Get bodyToken from X-Auth-Body-Token header
         $bodyToken = isset($_SERVER['HTTP_X_AUTH_BODY_TOKEN']) ? $_SERVER['HTTP_X_AUTH_BODY_TOKEN'] : null;
-        
+    
         if($jwtToken === null || $bodyToken === null){
             return false;
         }
         
         $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
         $payload = checkJWTHS256($jwtToken, $encKey);
-        
+
         if($payload === false){
             // Invalid or tampered token
             return false;
@@ -448,7 +509,7 @@ class Auth{
         
         $loginId = $payload['loginId'];
         $userId = $payload['userId'];
-        
+
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
             error_log("No db connection..");
@@ -467,7 +528,7 @@ class Auth{
         // Authentication successful - set userId as public variable
         $this->userId = $userId;
         $this->username = isset($payload['user']) ? $payload['user'] : null;
-        
+        $this->loginId = $loginId;
         return true;
     }
 

@@ -63,18 +63,23 @@ Secondly, each request should carry a header named 'HTTP_X_AUTH_BODY_TOKEN' carr
 In Javascript this would look like:
 
 ```bash
-function httpRequest(method, requestUrl, bodyToken) {
-  var xhttp = new XMLHttpRequest();
-  xhttp.setRequestHeader("HTTP-X-AUTH-BODY-TOKEN", bodyToken);
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      return this.responseText;
-    }
-  };
-  xhttp.open(method, requestUrl, true);
-  xhttp.send();
+async function authFetchJSON(url, request, bodyToken, method="POST"){
+    return fetch(url, {
+        method: method,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Auth-Body-Token': bodyToken,
+        },
+        body: JSON.stringify(request),
+      }).then(async (response)=>{
+        
+        return response.json();
+        
+      });
 }
 ```
+Note that the above function is included in Auth/js/fetch.js
 
 ## Auth class methods
 

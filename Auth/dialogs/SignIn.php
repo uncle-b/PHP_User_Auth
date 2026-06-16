@@ -14,7 +14,13 @@ if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["usernam
             // MFA verified and login complete
             $cookie_name = "X-AUTH-KEY";
             $cookie_value = $result['token'];
-            setcookie($cookie_name, $cookie_value, 0, "", "", true, true);
+
+            $https=false;
+            if($auth->isSecure()){
+                $https=true;
+            };
+
+            setcookie($cookie_name, $cookie_value, 0, "/", "", $https, true);
 
             $bodyToken = $result['bodyToken'];
             
@@ -23,17 +29,43 @@ if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["usernam
             <html>
                 <head>
                     <link rel="stylesheet" href="dialogs.css">
+                    <script src="/Auth/js/fetch.js"></script>
+                    <script>
+                        async function signOut(){
+                            var method = "POST";
+                            var requestUrl = "/Auth/api/SignOut.php";
+                            var bodyToken = document.getElementById("bodyToken").value;
+                            var request = {
+                                onAllAccounts: false,
+                                redirectUrl: "/"
+                            }
+                            
+                            try {
+                                var res = await authFetchJSON(requestUrl, request, bodyToken);
+                                if(res.error === false){
+                                    window.location.href = "/";
+                                } else {
+                                    console.log(res.message);
+                                }
+                                
+                            } catch (error) {
+                                console.error("Sign out failed:", error);
+                            }
+                        }
+
+                    </script>
                 </head>
                 <body>
                     <div class="container">
                         <h1>Login successful</h1>
-                        <input type='hidden' value='<?php echo $bodyToken; ?>' name='bodyToken'/>
+                        <input id='bodyToken' type='hidden' value='<?php echo $bodyToken; ?>' name='bodyToken'/>
                         <p>
                             Login succeeded. A httponly cookie with an authentication key has been set. This will be automatically sent back to the server with every request.
                         </p>
                         <p>
                             Besides that, a hidden input, named 'bodyToken' is included in this page. The value of that should be returned with every request by setting a http header named 'X-Auth-Body-Token' containing this value.
                         </p>
+                        <button type="button" onclick="signOut();">Sign out</button>
                     </div>
                 </body>
             </html>
