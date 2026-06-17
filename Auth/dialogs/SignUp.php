@@ -1,5 +1,17 @@
 <?php
 include "../Auth2.php";
+
+// Start session for CSRF protection
+$auth->startSession();
+
+$csrfToken = $auth->generateCsrfToken();
+$error = false;
+$usrErrorMsg = "";
+
+$usr = isset($_POST["usr"]) ? $_POST["usr"] : "";
+$pwd = isset($_POST["pwd"]) ? $_POST["pwd"] : "";
+$eml = isset($_POST["email"]) ? $_POST["email"] : "";
+$csrfTokenPost = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
 ?>
 <!DOCTYPE html>
 <html>
@@ -89,7 +101,7 @@ if($eml !== ""){
     }
 }
 
-if($usr == "" || $pwd == "" || $eml == "" || $error == true){
+if($usr == "" || $pwd == "" || $eml == "" || $error == true || !$auth->validateCsrfToken($csrfTokenPost)){
 
 ?>
     </head>
@@ -97,8 +109,9 @@ if($usr == "" || $pwd == "" || $eml == "" || $error == true){
         <div class="container">
             <div id="form">
             <form method="POST" onsubmit="showLoader()">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                 <label for="usr">User name:</label>
-                <input type="text" id="usr" name="usr" value="<?php echo $usr ?>" onkeyup="validateInput();"><br><?php echo $usrErrorMsg ?>
+                <input type="text" id="usr" name="usr" value="<?php echo htmlspecialchars($usr) ?>" onkeyup="validateInput();"><br><?php echo $usrErrorMsg ?>
                 <label for="email">Email address:</label>
                 <input type="email" id="email" name="email" value="<?php echo $eml ?>" onkeyup="validateInput();"><br><?php echo $emlErrorMsg ?>
                 <label for="pwd">Password:</label>
@@ -120,9 +133,12 @@ if($usr == "" || $pwd == "" || $eml == "" || $error == true){
 <?php
 } else {
 
-    //Check if username is available
+    //Check if username is available and CSRF token is valid
+    if(!$auth->validateCsrfToken($csrfTokenPost)) {
+        die("Invalid CSRF token.");
+    }
     try{
-        $res = $auth->createUser($usr, $eml, $pwd);
+        $res = $auth->createUser($usr, $eml, $pwd, null, $csrfTokenPost);
     } catch (Exception $e) {
         error_log($e);
         die;

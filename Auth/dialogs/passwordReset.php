@@ -1,5 +1,9 @@
 <?php
 include "../Auth2.php";
+
+// Start session for CSRF protection
+$auth->startSession();
+$csrfToken = $auth->generateCsrfToken();
 ?>
 <!DOCTYPE html>
 <html>
@@ -67,6 +71,7 @@ include "../Auth2.php";
             
             $pwd = isset($_POST["pwd"]) ? $_POST["pwd"] : "";
             $pwd2 = isset($_POST["pwd2"]) ? $_POST["pwd2"] : "";
+            $csrfTokenPost = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
             
             // Validate the reset token and account
             if($account === "" || $token === ""){
@@ -75,19 +80,25 @@ include "../Auth2.php";
             }
             
             if($pwd !== "" && $pwd2 !== "" && $error === false){
-                try{
-                    $result = $auth->resetPassword($account, $token, $pwd, $pwd2);
-                    if($result['error'] === false){ 
-                        $success = true;
-                        $successMsg = $result['message'];
-                    } else {
-                        $error = true;
-                        $errorMsg = $result['message'];
-                    }
-                } catch (Exception $e) {
-                    error_log($e);
+                // Validate CSRF token
+                if(!$auth->validateCsrfToken($csrfTokenPost)) {
                     $error = true;
-                    $errorMsg = "An error occurred. Please try again.";
+                    $errorMsg = "Invalid request.";
+                } else {
+                    try{
+                        $result = $auth->resetPassword($account, $token, $pwd, $pwd2, $csrfTokenPost);
+                        if($result['error'] === false){ 
+                            $success = true;
+                            $successMsg = $result['message'];
+                        } else {
+                            $error = true;
+                            $errorMsg = $result['message'];
+                        }
+                    } catch (Exception $e) {
+                        error_log($e);
+                        $error = true;
+                        $errorMsg = "An error occurred. Please try again.";
+                    }
                 }
             }
             
@@ -105,6 +116,7 @@ include "../Auth2.php";
             <form method="POST" onsubmit="showLoader()">
                 <input type="hidden" name="account" value="<?php echo htmlspecialchars($account) ?>">
                 <input type="hidden" name="token" value="<?php echo htmlspecialchars($token) ?>">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                 <label for="pwd">New Password:</label>
                 <input type="password" id="pwd" name="pwd" onkeyup="validatePasswordReset();" required><br>
                 <label for="pwd2">Confirm New Password:</label>

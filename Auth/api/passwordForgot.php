@@ -2,9 +2,13 @@
 header('Content-Type: application/json');
 include "../Auth2.php";
 
+// Start session for CSRF protection
+$auth->startSession();
+
 $JSON = json_decode(file_get_contents('php://input'), true);
 
 $username = isset($JSON['username']) ? $JSON['username'] : '';
+$csrfToken = isset($JSON['csrfToken']) ? $JSON['csrfToken'] : null;
 
 if($username === ''){
     $result = array(
@@ -16,7 +20,7 @@ if($username === ''){
 }
 
 try{
-    $success = $auth->requestPasswordReset($username);
+    $success = $auth->requestPasswordReset($username, null, $csrfToken);
     if($success === true){
         $result = array(
             'error' => false,

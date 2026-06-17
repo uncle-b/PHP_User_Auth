@@ -86,11 +86,12 @@ class Auth{
 
     public function userExists($user){
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
-        if($con){
-            $query = "SELECT user FROM `accounts` WHERE `user`='$user'";
-            $res = DB::singleResultQuery($con, $query, "user");
-            if($res!==false){
-                return true;
+        if($con) {
+            $stmt = $con->prepare("SELECT user FROM `accounts` WHERE `user`=?");
+            $stmt->bind_param('s', $user);
+            if($stmt->execute()) {
+                $result = $stmt->get_result();
+                return $result->num_rows > 0;
             }
             return false;
         } else {
@@ -111,10 +112,6 @@ class Auth{
             return true;
         }
         return false;
-    }
-
-    private function makePassToken($user, $password){
-       return base64_encode(hash_hmac('sha256', "$user", $password, true));
     }
 
     public function encryptDataArray($dataArray){
@@ -146,7 +143,11 @@ class Auth{
         
     }
 
-    public function createUser($usr, $eml, $psw, $validationURL=null){
+    public function createUser($usr, $eml, $psw, $validationURL=null, $csrfToken = null){
+        // Validate CSRF token for unauthenticated requests
+        if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            return false;
+        }
 
         $userExists = $this->userExists($usr);
         $emlValid = $this->validateEmail($eml);
@@ -158,7 +159,8 @@ class Auth{
 
         if($userExists === false && $emlValid===true && $pswValid===true){
 
-            $passToken = $this->makePassToken($usr, $psw);
+            // $passToken = $this->makePassToken($usr, $psw);
+            $passToken = password_hash($psw, PASSWORD_ARGON2ID);
             $encryptedData = $this->encryptDataArray(["email"=>$eml]);
             
             $encEml = $encryptedData["email"];
@@ -166,15 +168,15 @@ class Auth{
             $emailHash = hash('sha256', strtolower($eml));
 
             $decryptedData = $this->decryptDataArray($encryptedData);
-            $verificationCode = rand(10000,99999);
+            $verificationCode = random_int(10000, 99999);
 
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
-                $query = "INSERT INTO `accounts`(`user`, `email`, `emailHash`, `verificationCode`,`passToken`, `nonce`, `verified`) VALUES ('$usr','$encEml','$emailHash',$verificationCode,'$passToken','$nonce', 0);";
-                $res = DB::query($con, $query);
-                if($res!==false){
+                $stmt = $con->prepare("INSERT INTO `accounts`(`user`, `email`, `emailHash`, `verificationCode`, `passToken`, `nonce`, `verified`) VALUES (?, ?, ?, ?, ?, ?, 0)");
+                $stmt->bind_param('sssisss', $usr, $encEml, $emailHash, $verificationCode, $passToken, $nonce);
+                if($stmt->execute()){
                     
-                    $id = $con->insert_id;
+                    $id = $stmt->insert_id;
                     $validationURL.="?account=$id&key=$verificationCode";
                     $emailText = "";
                     $subject = "Subject";
@@ -193,11 +195,15 @@ class Auth{
     public function verifyAccount($id,$key){
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
-            $query = "SELECT * FROM `accounts` WHERE userId=$id AND verificationCode=$key;";
-            $res = DB::query($con, $query);
-            if($res!==false){
-                $query="UPDATE `accounts` SET verified=1 WHERE userId=$id";
-                return DB::query($con, $query);
+            $stmt = $con->prepare("SELECT * FROM `accounts` WHERE userId=? AND verificationCode=?");
+            $stmt->bind_param('ii', $id, $key);
+            if($stmt->execute()){
+                $result = $stmt->get_result();
+                if($result->num_rows > 0){
+                    $stmt2 = $con->prepare("UPDATE `accounts` SET verified=1 WHERE userId=?");
+                    $stmt2->bind_param('i', $id);
+                    return $stmt2->execute();
+                }
             }
             return false;
         } else {
@@ -206,69 +212,105 @@ class Auth{
         }
     }
 
-    public function signIn($usr, $psw){
+    public function startSession(){
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+    }
+
+    public function generateCsrfToken(){
+        $this->startSession();
+        if (empty($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['csrf_token'];
+    }
+
+    public function validateCsrfToken($token){
+        $this->startSession();
+        if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
+            return false;
+        }
+        // Optionally: regenerate token after use (one-time use)
+        // $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        return true;
+    }
+
+    public function signIn($usr, $psw, $csrfToken = null){
+        // Validate CSRF token for unauthenticated requests
+        if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            return array(
+                'error' => true,
+                'message' => "Invalid CSRF token."
+            );
+        }
+        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
-            $passToken = $this->makePassToken($usr, $psw);
-            $query = "SELECT * FROM `accounts` WHERE `user`='$usr' AND `verified`=1 LIMIT 1";
-            $res = DB::query($con, $query);
+            //$this->makePassToken($usr, $psw);
+            $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `user`=? AND `verified`=1 LIMIT 1");
+            $stmt->bind_param('s', $usr);
             
-            if($res !== false && mysqli_num_rows($res) > 0){
-                $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
-                $storedPassToken = $row['passToken'];
-                $userId = $row['userId'];
-
-                if($storedPassToken === $passToken){
-                    // Password correct!
-                    $loginId = $this->randomString(32);
-                    $bodyToken= $this->randomString(16);
-                    $payload = array(
-                        "user" => $usr,
-                        "userId" => $userId,
-                        "loginId" => $loginId,
-                        "bodyToken" => $bodyToken,
-                        "issued" => time(),
-                        "expiry" => (time() + 31536000)  // = today + 1 year
-                    );
-
-                    $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
-                    $token = generateJWTHS256($payload, $encKey);
-                    
-                    $loginIds = $row['loginId'];
-                    if($loginIds == "" || $loginIds === null){
-                        $query = "UPDATE `accounts` SET `loginId`='$loginId' WHERE `user`='$usr';";
-                    } else {
-                        $loginIds .= "," . $loginId;
-                        $query = "UPDATE `accounts` SET `loginId`='$loginIds' WHERE `user`='$usr';";
-                    }
-                    
-                    $updateRes = DB::query($con, $query);
-                    
-                    if($updateRes !== false){
-                        return array(
-                            'error' => false,
-                            'message' => "Login successful.",
-                            'token' => $token,
-                            'loginId' => $loginId,
-                            'bodyToken' => $bodyToken
+            if($stmt->execute()){
+                $res = $stmt->get_result();
+                if($res !== false && $res->num_rows > 0){
+                    $row = $res->fetch_array(MYSQLI_ASSOC);
+                    $storedPassToken = $row['passToken'];
+                    $userId = $row['userId'];
+                        
+                    if(password_verify($psw, $storedPassToken)){ //;$storedPassToken === $passToken
+                        // Password correct!
+                        $loginId = $this->randomString(32);
+                        $bodyToken= $this->randomString(16);
+                        $payload = array(
+                            "user" => $usr,
+                            "userId" => $userId,
+                            "loginId" => $loginId,
+                            "bodyToken" => $bodyToken,
+                            "issued" => time(),
+                            "expiry" => (time() + 31536000)  // = today + 1 year
                         );
+
+                        $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
+                        $token = generateJWTHS256($payload, $encKey);
+                        
+                        $loginIds = $row['loginId'];
+                        if($loginIds == "" || $loginIds === null){
+                            $newLoginIds = $loginId;
+                        } else {
+                            $newLoginIds = $loginIds . "," . $loginId;
+                        }
+                        
+                        $stmt2 = $con->prepare("UPDATE `accounts` SET `loginId`=? WHERE `user`=?");
+                        $stmt2->bind_param('ss', $newLoginIds, $usr);
+                        $updateRes = $stmt2->execute();
+                        
+                        if($updateRes !== false){
+                            return array(
+                                'error' => false,
+                                'message' => "Login successful.",
+                                'token' => $token,
+                                'loginId' => $loginId,
+                                'bodyToken' => $bodyToken
+                            );
+                        } else {
+                            return array(
+                                'error' => true,
+                                'message' => "Failed to update login session."
+                            );
+                        }
                     } else {
                         return array(
                             'error' => true,
-                            'message' => "Failed to update login session."
+                            'message' => "Login failed: Invalid username or password."
                         );
                     }
                 } else {
                     return array(
                         'error' => true,
-                        'message' => "Login failed: Invalid credentials."
+                        'message' => "Login failed: Invalid username or password."
                     );
                 }
-            } else {
-                return array(
-                    'error' => true,
-                    'message' => "Login failed: User not found or account not verified."
-                );
             }
         } else {
             error_log("No db connection..");
@@ -288,30 +330,37 @@ class Auth{
             $loginId = $this->loginId;
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
-                $query = "SELECT * FROM `accounts` WHERE userId=$id AND loginId LIKE '%$loginId%' LIMIT 1;";
-                $res = DB::query($con, $query);
+                $searchPattern = "%" . $loginId . "%";
+                $stmt = $con->prepare("SELECT * FROM `accounts` WHERE userId=? AND loginId LIKE ? LIMIT 1");
+                $stmt->bind_param('is', $id, $searchPattern);
                 
-                if($res !== false && mysqli_num_rows($res) > 0){
-                    $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
-                    $loginIds = $row['loginId'];
+                if($stmt->execute()){
+                    $res = $stmt->get_result();
+                    if($res !== false && $res->num_rows > 0){
+                        $row = $res->fetch_array(MYSQLI_ASSOC);
+                        $loginIds = $row['loginId'];
 
-                    if($loginIds!==""){
-                        if($onAllAccounts == false){
-                            $ids=explode(",",$loginIds);
-                            for($i=0;$i<count($ids);$i++){
-                                if($ids[$i] === $loginId){
-                                    array_splice($ids, $i, 1);
-                                    break;
+                        if($loginIds!==""){
+                            if($onAllAccounts == false){
+                                $ids=explode(",",$loginIds);
+                                for($i=0;$i<count($ids);$i++){
+                                    if($ids[$i] === $loginId){
+                                        array_splice($ids, $i, 1);
+                                        break;
+                                    }
                                 }
+                                $newLoginIds=join(",", $ids);
+                            } else {
+                                $newLoginIds="";
                             }
-                            $loginIds=join(",", $ids);
                         } else {
-                            $loginIds="";
+                            $newLoginIds = "";
                         }
-                    }
 
-                    $query="UPDATE `accounts` SET loginId='$loginIds' WHERE userId=$id";
-                    return DB::query($con, $query);
+                        $stmt2 = $con->prepare("UPDATE `accounts` SET loginId=? WHERE userId=?");
+                        $stmt2->bind_param('si', $newLoginIds, $id);
+                        return $stmt2->execute();
+                    }
                 }
                 return false;
             } else {
@@ -390,7 +439,12 @@ class Auth{
         } catch (Exception $e) {error_log($mail->ErrorInfo);}
     }
 
-    public function requestPasswordReset($username, $resetURL = null){
+    public function requestPasswordReset($username, $resetURL = null, $csrfToken = null){
+        // Validate CSRF token for unauthenticated requests
+        if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            return false;
+        }
+        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
             if($resetURL === null){
@@ -400,32 +454,36 @@ class Auth{
             $resetToken = $this->randomString(32);
             $resetExpiry = time() + 3600; // 1 hour expiry
             
-            $query = "SELECT * FROM `accounts` WHERE `user`='$username' AND `verified`=1 LIMIT 1";
-            $res = DB::query($con, $query);
+            $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `user`=? AND `verified`=1 LIMIT 1");
+            $stmt->bind_param('s', $username);
             
-            if($res !== false && mysqli_num_rows($res) > 0){
-                $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
-                $userId = $row['userId'];
-                $decryptedData = $this->decryptDataArray([
-                    "email" => $row['email'],
-                    "nonce" => $row['nonce']
-                ]);
-                
-                $email = $decryptedData['email'];
-                
-                $updateQuery = "UPDATE `accounts` SET `resetToken`='$resetToken', `resetExpiry`=$resetExpiry WHERE `userId`=$userId";
-                $updateRes = DB::query($con, $updateQuery);
-                
-                if($updateRes !== false){
-                    $resetLink = $resetURL . "?account=$userId&token=$resetToken";
-                    $subject = "Password Reset Request";
+            if($stmt->execute()){
+                $res = $stmt->get_result();
+                if($res !== false && $res->num_rows > 0){
+                    $row = $res->fetch_array(MYSQLI_ASSOC);
+                    $userId = $row['userId'];
+                    $decryptedData = $this->decryptDataArray([
+                        "email" => $row['email'],
+                        "nonce" => $row['nonce']
+                    ]);
                     
-                    $message = "";
-                    $altMessage = "";
-                    include "emails/passwordReset.php";
+                    $email = $decryptedData['email'];
                     
-                    $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
-                    return true;
+                    $stmt2 = $con->prepare("UPDATE `accounts` SET `resetToken`=?, `resetExpiry`=? WHERE `userId`=?");
+                    $stmt2->bind_param('sii', $resetToken, $resetExpiry, $userId);
+                    $updateRes = $stmt2->execute();
+                    
+                    if($updateRes !== false){
+                        $resetLink = $resetURL . "?account=$userId&token=$resetToken";
+                        $subject = "Password Reset Request";
+                        
+                        $message = "";
+                        $altMessage = "";
+                        include "emails/passwordReset.php";
+                        
+                        $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
+                        return true;
+                    }
                 }
             }
             
@@ -441,11 +499,14 @@ class Auth{
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
             $emailHash = hash('sha256', strtolower($email));
-            $query = "SELECT * FROM `accounts` WHERE `emailHash`='$emailHash' AND `verified`=1 LIMIT 1";
-            $res = DB::query($con, $query);
+            $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `emailHash`=? AND `verified`=1 LIMIT 1");
+            $stmt->bind_param('s', $emailHash);
             
-            if($res !== false && mysqli_num_rows($res) > 0){
-                return mysqli_fetch_array($res, MYSQLI_ASSOC);
+            if($stmt->execute()){
+                $res = $stmt->get_result();
+                if($res !== false && $res->num_rows > 0){
+                    return $res->fetch_array(MYSQLI_ASSOC);
+                }
             }
             return false;
         } else {
@@ -517,11 +578,17 @@ class Auth{
         }
         
         // Check if this userId has the specified loginId
-        $query = "SELECT * FROM `accounts` WHERE `userId`=$userId AND `loginId` LIKE '%$loginId%' LIMIT 1";
-        $res = DB::query($con, $query);
+        $searchPattern = "%" . $loginId . "%";
+        $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `userId`=? AND `loginId` LIKE ? LIMIT 1");
+        $stmt->bind_param('is', $userId, $searchPattern);
         
-        if($res === false || mysqli_num_rows($res) === 0){
-            // LoginId not found for this user
+        if($stmt->execute()){
+            $res = $stmt->get_result();
+            if($res === false || $res->num_rows === 0){
+                // LoginId not found for this user
+                return false;
+            }
+        } else {
             return false;
         }
         
@@ -533,48 +600,60 @@ class Auth{
     }
 
     private function generateMFACode(){
-        return str_pad(rand(0, 9999), 4, '0', STR_PAD_LEFT);
+        return str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
     }
 
-    public function initiateMFA($username, $password){
+    public function initiateMFA($username, $password, $csrfToken = null){
+        // Validate CSRF token for unauthenticated requests
+        if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            return array(
+                'error' => true,
+                'message' => "Invalid CSRF token."
+            );
+        }
+        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
             error_log("No db connection..");
             throw new Exception("Invalid database connection.");
         }
         
-        $passToken = $this->makePassToken($username, $password);
-        $query = "SELECT * FROM `accounts` WHERE `user`='$username' AND `verified`=1 LIMIT 1";
-        $res = DB::query($con, $query);
+        //$this->makePassToken($username, $password);
+        $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `user`=? AND `verified`=1 LIMIT 1");
+        $stmt->bind_param('s', $username);
         
-        if($res !== false && mysqli_num_rows($res) > 0){
-            $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
-            $storedPassToken = $row['passToken'];
-            
-            if($storedPassToken === $passToken){
-                $mfaCode = $this->generateMFACode();
-                $mfaExpiry = time() + 900; // 15 minutes expiry
-                $userId = $row['userId'];
-                $email = $this->decryptDataArray([
-                    "email" => $row['email'],
-                    "nonce" => $row['nonce']
-                ])['email'];
+        if($stmt->execute()){
+            $res = $stmt->get_result();
+            if($res !== false && $res->num_rows > 0){
+                $row = $res->fetch_array(MYSQLI_ASSOC);
+                $storedPassToken = $row['passToken'];
                 
-                $updateQuery = "UPDATE `accounts` SET `mfaCode`='$mfaCode', `mfaExpiry`=$mfaExpiry WHERE `userId`=$userId";
-                $updateRes = DB::query($con, $updateQuery);
-                
-                if($updateRes !== false){
-
-                    include "emails/MFAMessage.php";
-
-                    $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
+                if(password_verify($password, $storedPassToken)){ // $storedPassToken === $passToken
+                    $mfaCode = $this->generateMFACode();
+                    $mfaExpiry = time() + 900; // 15 minutes expiry
+                    $userId = $row['userId'];
+                    $email = $this->decryptDataArray([
+                        "email" => $row['email'],
+                        "nonce" => $row['nonce']
+                    ])['email'];
                     
-                    return array(
-                        'error' => false,
-                        'message' => "MFA code sent to your email.",
-                        'userId' => $userId,
-                        'username' => $username
-                    );
+                    $stmt2 = $con->prepare("UPDATE `accounts` SET `mfaCode`=?, `mfaExpiry`=? WHERE `userId`=?");
+                    $stmt2->bind_param('sii', $mfaCode, $mfaExpiry, $userId);
+                    $updateRes = $stmt2->execute();
+                    
+                    if($updateRes !== false){
+
+                        include "emails/MFAMessage.php";
+
+                        $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
+                        
+                        return array(
+                            'error' => false,
+                            'message' => "MFA code sent to your email.",
+                            'userId' => $userId,
+                            'username' => $username
+                        );
+                    }
                 }
             }
         }
@@ -585,34 +664,47 @@ class Auth{
         );
     }
 
-    public function verifyMFA($userId, $code, $password = null, $username = null){
+    public function verifyMFA($userId, $code, $password = null, $username = null, $csrfToken = null){
+        // Validate CSRF token for unauthenticated requests
+        if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            return array(
+                'error' => true,
+                'message' => "Invalid CSRF token."
+            );
+        }
+        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
             error_log("No db connection..");
             throw new Exception("Invalid database connection.");
         }
         
-        $query = "SELECT * FROM `accounts` WHERE `userId`=$userId AND `mfaExpiry` > " . time() . " LIMIT 1";
-        $res = DB::query($con, $query);
+        $currentTime = time();
+        $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `userId`=? AND `mfaExpiry` > ? LIMIT 1");
+        $stmt->bind_param('ii', $userId, $currentTime);
         
-        if($res !== false && mysqli_num_rows($res) > 0){
-            $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
-            $storedCode = $row['mfaCode'];
-            
-            if($storedCode === $code){
-                // MFA verified - clear the code and proceed with login
-                $clearQuery = "UPDATE `accounts` SET `mfaCode`='', `mfaExpiry`=0 WHERE `userId`=$userId";
-                DB::query($con, $clearQuery);
+        if($stmt->execute()){
+            $res = $stmt->get_result();
+            if($res !== false && $res->num_rows > 0){
+                $row = $res->fetch_array(MYSQLI_ASSOC);
+                $storedCode = $row['mfaCode'];
                 
-                // Now perform the actual sign in
-                if($username !== null && $password !== null){
-                    return $this->signIn($username, $password);
+                if($storedCode === $code){
+                    // MFA verified - clear the code and proceed with login
+                    $stmt2 = $con->prepare("UPDATE `accounts` SET `mfaCode`='', `mfaExpiry`=0 WHERE `userId`=?");
+                    $stmt2->bind_param('i', $userId);
+                    $stmt2->execute();
+                    
+                    // Now perform the actual sign in
+                    if($username !== null && $password !== null){
+                        return $this->signIn($username, $password);
+                    }
+                    
+                    return array(
+                        'error' => false,
+                        'message' => "MFA verification successful."
+                    );
                 }
-                
-                return array(
-                    'error' => false,
-                    'message' => "MFA verification successful."
-                );
             }
         }
         
@@ -622,7 +714,15 @@ class Auth{
         );
     }
 
-    public function resetPassword($userId, $resetToken, $newPassword, $newPasswordRepeat = null){
+    public function resetPassword($userId, $resetToken, $newPassword, $newPasswordRepeat = null, $csrfToken = null){
+        // Validate CSRF token for unauthenticated requests
+        if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            return array(
+                'error' => true,
+                'message' => "Invalid CSRF token."
+            );
+        }
+        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
             if($newPasswordRepeat !== null && $newPassword !== $newPasswordRepeat){
@@ -639,34 +739,39 @@ class Auth{
                 );
             }
             
-            $query = "SELECT * FROM `accounts` WHERE `userId`=$userId AND `resetToken`='$resetToken' AND `resetExpiry` > " . time() . " LIMIT 1";
-            $res = DB::query($con, $query);
+            $currentTime = time();
+            $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `userId`=? AND `resetToken`=? AND `resetExpiry` > ? LIMIT 1");
+            $stmt->bind_param('isi', $userId, $resetToken, $currentTime);
             
-            if($res !== false && mysqli_num_rows($res) > 0){
-                $row = mysqli_fetch_array($res, MYSQLI_ASSOC);
-                $user = $row['user'];
+            if($stmt->execute()){
+                $res = $stmt->get_result();
+                if($res !== false && $res->num_rows > 0){
+                    $row = $res->fetch_array(MYSQLI_ASSOC);
+                    $user = $row['user'];
                 
-                $newPassToken = $this->makePassToken($user, $newPassword);
-                
-                $updateQuery = "UPDATE `accounts` SET `passToken`='$newPassToken', `loginId`='', `resetToken`='', `resetExpiry`=0 WHERE `userId`=$userId";
-                $updateRes = DB::query($con, $updateQuery);
-                
-                if($updateRes !== false){
-                    return array(
-                        'error' => false,
-                        'message' => "Password has been reset successfully."
-                    );
+                    $newPassToken = password_hash($newPassword, PASSWORD_ARGON2ID); //$this->makePassToken($user, $newPassword);
+                    
+                    $stmt2 = $con->prepare("UPDATE `accounts` SET `passToken`=?, `loginId`='', `resetToken`='', `resetExpiry`=0 WHERE `userId`=?");
+                    $stmt2->bind_param('si', $newPassToken, $userId);
+                    $updateRes = $stmt2->execute();
+                    
+                    if($updateRes !== false){
+                        return array(
+                            'error' => false,
+                            'message' => "Password has been reset successfully."
+                        );
+                    } else {
+                        return array(
+                            'error' => true,
+                            'message' => "Failed to update password."
+                        );
+                    }
                 } else {
                     return array(
                         'error' => true,
-                        'message' => "Failed to update password."
+                        'message' => "Invalid or expired reset token."
                     );
                 }
-            } else {
-                return array(
-                    'error' => true,
-                    'message' => "Invalid or expired reset token."
-                );
             }
         } else {
             error_log("No db connection..");

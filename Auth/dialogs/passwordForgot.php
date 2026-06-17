@@ -1,5 +1,10 @@
 <?php
 include "../Auth2.php";
+
+// Start session for CSRF protection
+$auth->startSession();
+$csrfToken = $auth->generateCsrfToken();
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -28,22 +33,29 @@ include "../Auth2.php";
             $successMsg = "";
             
             $username = isset($_POST["username"]) ? $_POST["username"] : "";
+            $csrfTokenPost = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
             
             if($username !== ""){
                 if(strlen($username) >= 3){  // Basic validation
-                    try{
-                        $result = $auth->requestPasswordReset($username);
-                        if($result === true){ 
-                            $success = true;
-                            $successMsg = "If an account exists with this username, a password reset link has been sent to the associated email address.";
-                        } else {
-                            $error = true;
-                            $errorMsg = "Failed to process password reset request.";
-                        }
-                    } catch (Exception $e) {
-                        error_log($e);
+                    // Validate CSRF token
+                    if(!$auth->validateCsrfToken($csrfTokenPost)) {
                         $error = true;
-                        $errorMsg = "An error occurred. Please try again.";
+                        $errorMsg = "Invalid request.";
+                    } else {
+                        try{
+                            $result = $auth->requestPasswordReset($username, null, $csrfTokenPost);
+                            if($result === true){ 
+                                $success = true;
+                                $successMsg = "If an account exists with this username, a password reset link has been sent to the associated email address.";
+                            } else {
+                                $error = true;
+                                $errorMsg = "Failed to process password reset request.";
+                            }
+                        } catch (Exception $e) {
+                            error_log($e);
+                            $error = true;
+                            $errorMsg = "An error occurred. Please try again.";
+                        }
                     }
                 } else {
                     $error = true;
@@ -71,6 +83,7 @@ include "../Auth2.php";
             
             <div id="form">
             <form method="POST" onsubmit="showLoader()">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                 <label for="username">Username:</label>
                 <input type="text" id="username" name="username" value="<?php echo htmlspecialchars($username) ?>" required><br>
                 <?php if($error) echo "<span class='errorMsg'>" . htmlspecialchars($errorMsg) . "</span><br>"; ?>

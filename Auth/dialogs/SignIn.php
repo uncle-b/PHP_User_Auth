@@ -1,6 +1,9 @@
 <?php
 include "../Auth2.php";
 
+// Start session for CSRF protection
+$auth->startSession();
+
 // Handle MFA verification
 if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["username"]) && isset($_POST["password"])){
     $userId = $_POST["userId"];
@@ -8,8 +11,9 @@ if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["usernam
     $password = $_POST["password"];
     $mfaCode = $_POST["mfa_code"];
     
+    $csrfToken = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
     try{
-        $result = $auth->verifyMFA($userId, $mfaCode, $password, $username);
+        $result = $auth->verifyMFA($userId, $mfaCode, $password, $username, $csrfToken);
         if($result['error'] === false && isset($result['token'])){
             // MFA verified and login complete
             $cookie_name = "X-AUTH-KEY";
@@ -20,7 +24,18 @@ if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["usernam
                 $https=true;
             };
 
-            setcookie($cookie_name, $cookie_value, 0, "/", "", $https, true);
+
+            $arr_cookie_options = array (
+                'expires' => 0, 
+                'path' => '/', 
+                'domain' => '.'.$_SERVER['SERVER_NAME'], // leading dot for compatibility or use subdomain
+                'secure' => $https,     // or false
+                'httponly' => true,    // or false
+                'samesite' => 'Strict' // None || Lax  || Strict
+                );
+
+            //setcookie($cookie_name, $cookie_value, 0, "/", $_SERVER['SERVER_NAME'], $https, true); 
+            setcookie($cookie_name, $cookie_value, $arr_cookie_options); 
 
             $bodyToken = $result['bodyToken'];
             
@@ -92,10 +107,11 @@ $mfaPassword = null;
 
 $usr = isset($_POST["usr"]) ? $_POST["usr"] : "";
 $pwd = isset($_POST["pwd"]) ? $_POST["pwd"] : "";
+$csrfToken = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
 
 if($usr !== "" && $pwd !== ""){
     try{
-        $result = $auth->initiateMFA($usr, $pwd);
+        $result = $auth->initiateMFA($usr, $pwd, $csrfToken);
         if($result['error'] === false && isset($result['userId'])){
             // Password correct, MFA code sent
             $mfaPending = true;
@@ -154,6 +170,7 @@ if($usr !== "" && $pwd !== ""){
                     <input type="hidden" name="userId" value="<?php echo htmlspecialchars($mfaUserId); ?>">
                     <input type="hidden" name="username" value="<?php echo htmlspecialchars($mfaUsername); ?>">
                     <input type="hidden" name="password" value="<?php echo htmlspecialchars($mfaPassword); ?>">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($auth->generateCsrfToken()); ?>">
                     <label for="mfa_code">Verification Code:</label>
                     <input type="text" id="mfa_code" name="mfa_code" pattern="[0-9]{4}" maxlength="4" required><br>
                     <label for="submit"></label>
@@ -169,6 +186,7 @@ if($usr !== "" && $pwd !== ""){
                 <?php endif; ?>
                 
                 <form method="POST" onsubmit="showLoader()">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($auth->generateCsrfToken()); ?>">
                     <label for="usr">User name:</label>
                     <input type="text" id="usr" name="usr" value="<?php echo htmlspecialchars($usr) ?>" required><br>
                     <label for="pwd">Password:</label>
