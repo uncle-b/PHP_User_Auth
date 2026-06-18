@@ -173,7 +173,7 @@ class Auth{
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
                 $stmt = $con->prepare("INSERT INTO `accounts`(`user`, `email`, `emailHash`, `verificationCode`, `passToken`, `nonce`, `verified`) VALUES (?, ?, ?, ?, ?, ?, 0)");
-                $stmt->bind_param('sssisss', $usr, $encEml, $emailHash, $verificationCode, $passToken, $nonce);
+                $stmt->bind_param('sssiss', $usr, $encEml, $emailHash, $verificationCode, $passToken, $nonce);
                 if($stmt->execute()){
                     
                     $id = $stmt->insert_id;
@@ -218,6 +218,36 @@ class Auth{
         }
     }
 
+    /**
+     * Check if the current request has JSON content type
+     */
+    public function isJsonRequest() {
+        $contentType = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
+        return strpos($contentType, 'application/json') !== false;
+    }
+
+    /**
+     * Get request data from either JSON body or POST, based on Content-Type
+     */
+    public function getRequestData() {
+        if ($this->isJsonRequest()) {
+            $json = file_get_contents('php://input');
+            $data = json_decode($json, true);
+            return $data !== null ? $data : [];
+        }
+        return $_POST;
+    }
+
+    /**
+     * Send a JSON response and exit
+     */
+    public function jsonResponse($data, $statusCode = 200) {
+        http_response_code($statusCode);
+        header('Content-Type: application/json');
+        echo json_encode($data);
+        exit;
+    }
+
     public function generateCsrfToken(){
         $this->startSession();
         if (empty($_SESSION['csrf_token'])) {
@@ -260,7 +290,7 @@ class Auth{
                         
                     if(password_verify($psw, $storedPassToken)){ //;$storedPassToken === $passToken
                         // Password correct!
-                        $loginId = $this->randomString(32);
+                        $loginId = $this->randomString(32) . '.' . time();
                         $bodyToken= $this->randomString(16);
                         $payload = array(
                             "user" => $usr,
@@ -268,7 +298,7 @@ class Auth{
                             "loginId" => $loginId,
                             "bodyToken" => $bodyToken,
                             "issued" => time(),
-                            "expiry" => (time() + 31536000)  // = today + 1 year
+                            "expiry" => (time() + 3600)  // = today + 1 hour
                         );
 
                         $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
@@ -328,6 +358,7 @@ class Auth{
             
             $id = $this->userId;
             $loginId = $this->loginId;
+
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
                 $searchPattern = "%" . $loginId . "%";
@@ -343,8 +374,11 @@ class Auth{
                         if($loginIds!==""){
                             if($onAllAccounts == false){
                                 $ids=explode(",",$loginIds);
+                                // Extract base loginId for comparison (without timestamp)
+                                $baseLoginId = explode('.', $loginId)[0];
                                 for($i=0;$i<count($ids);$i++){
-                                    if($ids[$i] === $loginId){
+                                    $storedBaseId = explode('.', $ids[$i])[0];
+                                    if($storedBaseId === $baseLoginId){
                                         array_splice($ids, $i, 1);
                                         break;
                                     }
@@ -526,12 +560,12 @@ class Auth{
 
     public function authenticateRequest(){
 
-        // Get JWT token from X-AUTH-KEY cookie
-        $jwtToken = isset($_COOKIE['X-AUTH-KEY']) ? $_COOKIE['X-AUTH-KEY'] : null;
+        // Get JWT token from cookie (PHP converts hyphens to underscores)
+        $jwtToken = isset($_COOKIE['X_AUTH_KEY']) ? $_COOKIE['X_AUTH_KEY'] : (isset($_COOKIE['X-AUTH-KEY']) ? $_COOKIE['X-AUTH-KEY'] : null);
         
         // Get bodyToken from X-Auth-Body-Token header
         $bodyToken = isset($_SERVER['HTTP_X_AUTH_BODY_TOKEN']) ? $_SERVER['HTTP_X_AUTH_BODY_TOKEN'] : null;
-    
+
         if($jwtToken === null || $bodyToken === null){
             return false;
         }
@@ -570,6 +604,8 @@ class Auth{
         
         $loginId = $payload['loginId'];
         $userId = $payload['userId'];
+        $username = isset($payload['user']) ? $payload['user'] : null;
+        $currentTime = time();
 
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
@@ -577,8 +613,10 @@ class Auth{
             return false;
         }
         
-        // Check if this userId has the specified loginId
-        $searchPattern = "%" . $loginId . "%";
+        // Extract base loginId (without timestamp) for search
+        $baseLoginId = explode('.', $loginId)[0];
+        $searchPattern = "%" . $baseLoginId . "%";
+        
         $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `userId`=? AND `loginId` LIKE ? LIMIT 1");
         $stmt->bind_param('is', $userId, $searchPattern);
         
@@ -588,13 +626,85 @@ class Auth{
                 // LoginId not found for this user
                 return false;
             }
+            
+            $row = $res->fetch_array(MYSQLI_ASSOC);
+            $allLoginIds = $row['loginId'];
+            
+            // Cleanup expired loginIds
+            $loginIdsArray = explode(',', $allLoginIds);
+            $validLoginIds = [];
+            $foundCurrent = false;
+            
+            foreach($loginIdsArray as $storedId) {
+                $parts = explode('.', $storedId);
+                $storedBaseId = $parts[0];
+                $storedTimestamp = count($parts) > 1 ? (int)$parts[1] : $currentTime;
+                
+                // Keep if not expired (1 hour = 3600s)
+                if($currentTime - $storedTimestamp < 3600) {
+                    $validLoginIds[] = $storedId;
+                }
+                
+                // Check if this is our current loginId
+                if($storedBaseId === $baseLoginId) {
+                    $foundCurrent = true;
+                }
+            }
+            
+            // Update database with cleaned loginIds
+            $newLoginIds = implode(',', $validLoginIds);
+            $stmt2 = $con->prepare("UPDATE `accounts` SET loginId=? WHERE userId=?");
+            $stmt2->bind_param('si', $newLoginIds, $userId);
+            $stmt2->execute();
+            
+            if(!$foundCurrent){
+                return false;
+            }
+            
+            // Auto-renew JWT if expiring soon (< 5 minutes left)
+            $tokenNeedsRenewal = ($payload['expiry'] - $currentTime < 300);
+            
+            if($tokenNeedsRenewal) {
+                $newLoginId = $this->randomString(32) . '.' . $currentTime;
+                $newPayload = [
+                    "user" => $username,
+                    "userId" => $userId,
+                    "loginId" => $newLoginId,
+                    "bodyToken" => $bodyToken,
+                    "issued" => $currentTime,
+                    "expiry" => $currentTime + 3600
+                ];
+                
+                $newToken = generateJWTHS256($newPayload, $encKey);
+                
+                // Update cookie with new JWT
+                $https = $this->isSecure();
+                $cookieOptions = [
+                    'expires' => $currentTime + 3600,
+                    'path' => '/',
+                    'domain' => '.' . $_SERVER['SERVER_NAME'],
+                    'secure' => $https,
+                    'httponly' => true,
+                    'samesite' => 'Strict'
+                ];
+                setcookie("X_AUTH_KEY", $newToken, $cookieOptions);
+                
+                // Add new loginId to database
+                $updatedLoginIds = $newLoginIds . ',' . $newLoginId;
+                $stmt3 = $con->prepare("UPDATE `accounts` SET loginId=? WHERE userId=?");
+                $stmt3->bind_param('si', $updatedLoginIds, $userId);
+                $stmt3->execute();
+                
+                $loginId = $newLoginId;
+                $payload = $newPayload;
+            }
         } else {
             return false;
         }
         
-        // Authentication successful - set userId as public variable
+        // Authentication successful
         $this->userId = $userId;
-        $this->username = isset($payload['user']) ? $payload['user'] : null;
+        $this->username = $username;
         $this->loginId = $loginId;
         return true;
     }

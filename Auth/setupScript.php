@@ -3,6 +3,9 @@
 $auth_muteSetup = true;
 include "Auth2.php";
 
+$requestData = $auth->getRequestData();
+$isJson = $auth->isJsonRequest();
+
 // General functions
 function randomString($n) {
     $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -41,7 +44,7 @@ if($auth->active===true){
 } else {
 
 // if not, get admin user + password
-if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
+if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
 
 ?>
 <!DOCTYPE html>
@@ -101,8 +104,8 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
 <?php
 } else {
     // Start setting up secure authentication with the provided credentials.
-    $adminUsr = $_POST["usr"];
-    $adminPwd = $_POST["pwd"];
+    $adminUsr = $requestData["usr"];
+    $adminPwd = $requestData["pwd"];
     
     $AuthId = randomString(3);
 
@@ -111,10 +114,10 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
     $authDBName = "AuthDB_$AuthId";
     $authDBPwd = randomString(16);
     $authEncrypt = randomString(32);
-    $smtpHost = $_POST['smtphost'];
-    $smtpPort = $_POST['smtpport'];
-    $smtpEmail = $_POST['smtpeml'];
-    $smtpPwd = $_POST['smtppwd'];
+    $smtpHost = $requestData['smtphost'];
+    $smtpPort = $requestData['smtpport'];
+    $smtpEmail = $requestData['smtpeml'];
+    $smtpPwd = $requestData['smtppwd'];
 
     try {
         $conn = new PDO("mysql:host=$servername", $adminUsr, $adminPwd);
@@ -188,6 +191,13 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
         // Install composer dependencies
         exec("composer update");
 
+        if($isJson) {
+            $auth->jsonResponse([
+                'error' => false,
+                'message' => 'Secure authentication is almost set up on this server. Please run "composer update" in the terminal of the server to install the required dependencies.'
+            ]);
+        }
+
         ?>
         <!DOCTYPE html>
         <html>
@@ -208,6 +218,9 @@ if(!isset($_POST["usr"]) && !isset($_POST["pwd"])){
 
     } catch(PDOException $e) {
         error_log("Error: " . $e->getMessage());
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'Setup failed. Please see server error log for details.'], 500);
+        }
     ?>
         <!DOCTYPE html>
         <html>

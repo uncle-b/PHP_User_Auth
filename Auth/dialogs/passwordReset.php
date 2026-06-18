@@ -4,6 +4,10 @@ include "../Auth2.php";
 // Start session for CSRF protection
 $auth->startSession();
 $csrfToken = $auth->generateCsrfToken();
+
+$requestData = $auth->getRequestData();
+$isJson = $auth->isJsonRequest();
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -69,14 +73,17 @@ $csrfToken = $auth->generateCsrfToken();
             $account = isset($_GET["account"]) ? $_GET["account"] : "";
             $token = isset($_GET["token"]) ? $_GET["token"] : "";
             
-            $pwd = isset($_POST["pwd"]) ? $_POST["pwd"] : "";
-            $pwd2 = isset($_POST["pwd2"]) ? $_POST["pwd2"] : "";
-            $csrfTokenPost = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
+            $pwd = isset($requestData["pwd"]) ? $requestData["pwd"] : "";
+            $pwd2 = isset($requestData["pwd2"]) ? $requestData["pwd2"] : "";
+            $csrfTokenPost = isset($requestData["csrf_token"]) ? $requestData["csrf_token"] : null;
             
             // Validate the reset token and account
             if($account === "" || $token === ""){
                 $error = true;
                 $errorMsg = "Invalid password reset link.";
+                if($isJson) {
+                    $auth->jsonResponse(['error' => true, 'message' => 'Invalid password reset link.'], 400);
+                }
             }
             
             if($pwd !== "" && $pwd2 !== "" && $error === false){
@@ -84,21 +91,37 @@ $csrfToken = $auth->generateCsrfToken();
                 if(!$auth->validateCsrfToken($csrfTokenPost)) {
                     $error = true;
                     $errorMsg = "Invalid request.";
+                    if($isJson) {
+                        $auth->jsonResponse(['error' => true, 'message' => 'Invalid request.'], 400);
+                    }
                 } else {
                     try{
                         $result = $auth->resetPassword($account, $token, $pwd, $pwd2, $csrfTokenPost);
                         if($result['error'] === false){ 
                             $success = true;
                             $successMsg = $result['message'];
+                            if($isJson) {
+                                $auth->jsonResponse(['error' => false, 'message' => $result['message']]);
+                            }
                         } else {
                             $error = true;
                             $errorMsg = $result['message'];
+                            if($isJson) {
+                                $auth->jsonResponse(['error' => true, 'message' => $result['message']], 400);
+                            }
                         }
                     } catch (Exception $e) {
                         error_log($e);
                         $error = true;
                         $errorMsg = "An error occurred. Please try again.";
+                        if($isJson) {
+                            $auth->jsonResponse(['error' => true, 'message' => 'An error occurred. Please try again.'], 500);
+                        }
                     }
+                }
+            } else {
+                if($isJson && ($pwd === "" || $pwd2 === "")) {
+                    $auth->jsonResponse(['error' => true, 'message' => 'Passwords are required.'], 400);
                 }
             }
             

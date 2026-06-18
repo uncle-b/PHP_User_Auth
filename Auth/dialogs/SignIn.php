@@ -4,19 +4,22 @@ include "../Auth2.php";
 // Start session for CSRF protection
 $auth->startSession();
 
+$requestData = $auth->getRequestData();
+$isJson = $auth->isJsonRequest();
+
 // Handle MFA verification
-if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["username"]) && isset($_POST["password"])){
-    $userId = $_POST["userId"];
-    $username = $_POST["username"];
-    $password = $_POST["password"];
-    $mfaCode = $_POST["mfa_code"];
+if(isset($requestData["mfa_code"]) && isset($requestData["userId"]) && isset($requestData["username"]) && isset($requestData["password"])){
+    $userId = $requestData["userId"];
+    $username = $requestData["username"];
+    $password = $requestData["password"];
+    $mfaCode = $requestData["mfa_code"];
     
-    $csrfToken = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
+    $csrfToken = isset($requestData["csrf_token"]) ? $requestData["csrf_token"] : null;
     try{
         $result = $auth->verifyMFA($userId, $mfaCode, $password, $username, $csrfToken);
         if($result['error'] === false && isset($result['token'])){
             // MFA verified and login complete
-            $cookie_name = "X-AUTH-KEY";
+            $cookie_name = "X_AUTH_KEY";
             $cookie_value = $result['token'];
 
             $https=false;
@@ -38,6 +41,16 @@ if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["usernam
             setcookie($cookie_name, $cookie_value, $arr_cookie_options); 
 
             $bodyToken = $result['bodyToken'];
+            
+            // For JSON requests, return JSON response
+            if($isJson) {
+                $auth->jsonResponse([
+                    'error' => false,
+                    'message' => 'Login successful',
+                    'token' => $result['token'],
+                    'bodyToken' => $bodyToken
+                ]);
+            }
             
             ?>
             <!DOCTYPE html>
@@ -89,11 +102,17 @@ if(isset($_POST["mfa_code"]) && isset($_POST["userId"]) && isset($_POST["usernam
         } else {
             $mfaError = true;
             $mfaErrorMsg = $result['message'];
+            if($isJson) {
+                $auth->jsonResponse(['error' => true, 'message' => $result['message']], 400);
+            }
         }
     } catch (Exception $e) {
         error_log($e);
         $mfaError = true;
         $mfaErrorMsg = "An error occurred during MFA verification.";
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'An error occurred during MFA verification.'], 500);
+        }
     }
 }
 
@@ -105,9 +124,9 @@ $mfaUserId = null;
 $mfaUsername = null;
 $mfaPassword = null;
 
-$usr = isset($_POST["usr"]) ? $_POST["usr"] : "";
-$pwd = isset($_POST["pwd"]) ? $_POST["pwd"] : "";
-$csrfToken = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
+$usr = isset($requestData["usr"]) ? $requestData["usr"] : "";
+$pwd = isset($requestData["pwd"]) ? $requestData["pwd"] : "";
+$csrfToken = isset($requestData["csrf_token"]) ? $requestData["csrf_token"] : null;
 
 if($usr !== "" && $pwd !== ""){
     try{
@@ -118,14 +137,35 @@ if($usr !== "" && $pwd !== ""){
             $mfaUserId = $result['userId'];
             $mfaUsername = $result['username'];
             $mfaPassword = $pwd;
+            // For JSON requests, return MFA pending state
+            if($isJson) {
+                $auth->jsonResponse([
+                    'error' => false,
+                    'mfaPending' => true,
+                    'userId' => $result['userId'],
+                    'username' => $result['username'],
+                    'message' => 'MFA code sent to your email'
+                ]);
+            }
         } else {
             $error = true;
             $errorMsg = $result['message'];
+            if($isJson) {
+                $auth->jsonResponse(['error' => true, 'message' => $result['message']], 400);
+            }
         }
     } catch (Exception $e) {
         error_log($e);
         $error = true;
         $errorMsg = "An error occurred. Please try again.";
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'An error occurred. Please try again.'], 500);
+        }
+    }
+} else {
+    // Empty credentials
+    if($isJson) {
+        $auth->jsonResponse(['error' => true, 'message' => 'Username and password are required.'], 400);
     }
 }
 ?>

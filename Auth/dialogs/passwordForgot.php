@@ -5,6 +5,9 @@ include "../Auth2.php";
 $auth->startSession();
 $csrfToken = $auth->generateCsrfToken();
 
+$requestData = $auth->getRequestData();
+$isJson = $auth->isJsonRequest();
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -32,8 +35,8 @@ $csrfToken = $auth->generateCsrfToken();
             $errorMsg = "";
             $successMsg = "";
             
-            $username = isset($_POST["username"]) ? $_POST["username"] : "";
-            $csrfTokenPost = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
+            $username = isset($requestData["username"]) ? $requestData["username"] : "";
+            $csrfTokenPost = isset($requestData["csrf_token"]) ? $requestData["csrf_token"] : null;
             
             if($username !== ""){
                 if(strlen($username) >= 3){  // Basic validation
@@ -41,25 +44,44 @@ $csrfToken = $auth->generateCsrfToken();
                     if(!$auth->validateCsrfToken($csrfTokenPost)) {
                         $error = true;
                         $errorMsg = "Invalid request.";
+                        if($isJson) {
+                            $auth->jsonResponse(['error' => true, 'message' => 'Invalid request.'], 400);
+                        }
                     } else {
                         try{
                             $result = $auth->requestPasswordReset($username, null, $csrfTokenPost);
                             if($result === true){ 
                                 $success = true;
                                 $successMsg = "If an account exists with this username, a password reset link has been sent to the associated email address.";
+                                if($isJson) {
+                                    $auth->jsonResponse(['error' => false, 'message' => $successMsg]);
+                                }
                             } else {
                                 $error = true;
                                 $errorMsg = "Failed to process password reset request.";
+                                if($isJson) {
+                                    $auth->jsonResponse(['error' => true, 'message' => 'Failed to process password reset request.'], 400);
+                                }
                             }
                         } catch (Exception $e) {
                             error_log($e);
                             $error = true;
                             $errorMsg = "An error occurred. Please try again.";
+                            if($isJson) {
+                                $auth->jsonResponse(['error' => true, 'message' => 'An error occurred. Please try again.'], 500);
+                            }
                         }
                     }
                 } else {
                     $error = true;
                     $errorMsg = "Please enter a valid username.";
+                    if($isJson) {
+                        $auth->jsonResponse(['error' => true, 'message' => 'Please enter a valid username.'], 400);
+                    }
+                }
+            } else {
+                if($isJson) {
+                    $auth->jsonResponse(['error' => true, 'message' => 'Username is required.'], 400);
                 }
             }
             

@@ -4,14 +4,17 @@ include "../Auth2.php";
 // Start session for CSRF protection
 $auth->startSession();
 
+$requestData = $auth->getRequestData();
+$isJson = $auth->isJsonRequest();
+
 $csrfToken = $auth->generateCsrfToken();
 $error = false;
 $usrErrorMsg = "";
 
-$usr = isset($_POST["usr"]) ? $_POST["usr"] : "";
-$pwd = isset($_POST["pwd"]) ? $_POST["pwd"] : "";
-$eml = isset($_POST["email"]) ? $_POST["email"] : "";
-$csrfTokenPost = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
+$usr = isset($requestData["usr"]) ? $requestData["usr"] : "";
+$pwd = isset($requestData["pwd"]) ? $requestData["pwd"] : "";
+$eml = isset($requestData["email"]) ? $requestData["email"] : "";
+$csrfTokenPost = isset($requestData["csrf_token"]) ? $requestData["csrf_token"] : null;
 ?>
 <!DOCTYPE html>
 <html>
@@ -76,14 +79,17 @@ $csrfTokenPost = isset($_POST["csrf_token"]) ? $_POST["csrf_token"] : null;
 $error = false;
 $usrErrorMsg = "";
 
-$usr = isset($_POST["usr"]) ? $_POST["usr"] : "";
-$pwd = isset($_POST["pwd"]) ? $_POST["pwd"] : "";
-$eml = isset($_POST["email"]) ? $_POST["email"] : "";
+$usr = isset($requestData["usr"]) ? $requestData["usr"] : "";
+$pwd = isset($requestData["pwd"]) ? $requestData["pwd"] : "";
+$eml = isset($requestData["email"]) ? $requestData["email"] : "";
 
 if($usr !== ""){
     if($auth->userExists($usr)!==false){
         $error = true;
         $usrErrorMsg = "<label></label><span class='errorMsg'>User name already in use. Please choose a different name.</span><br>";
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'User name already in use. Please choose a different name.'], 400);
+        }
     }
 }
 
@@ -91,6 +97,9 @@ if($pwd !== ""){
     if($auth->validatePassword($pwd)===false){
         $error = true;
         $pswErrorMsg = "<label></label><span class='errorMsg'>Password is not strong enough.</span><br>";
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'Password is not strong enough.'], 400);
+        }
     }
 }
 
@@ -98,11 +107,24 @@ if($eml !== ""){
     if($auth->validateEmail($eml)===false){
         $error = true;
         $emlErrorMsg = "<label></label><span class='errorMsg'>Email address seems invalid.</span><br>";
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'Email address seems invalid.'], 400);
+        }
     }
 }
 
 if($usr == "" || $pwd == "" || $eml == "" || $error == true || !$auth->validateCsrfToken($csrfTokenPost)){
-
+    
+    if($isJson) {
+        if($usr == "" || $pwd == "" || $eml == "") {
+            $auth->jsonResponse(['error' => true, 'message' => 'All fields are required.'], 400);
+        } elseif (!$auth->validateCsrfToken($csrfTokenPost)) {
+            $auth->jsonResponse(['error' => true, 'message' => 'Invalid CSRF token.'], 400);
+        } else {
+            $auth->jsonResponse(['error' => true, 'message' => 'Validation errors occurred.'], 400);
+        }
+    }
+    
 ?>
     </head>
     <body>
@@ -135,12 +157,24 @@ if($usr == "" || $pwd == "" || $eml == "" || $error == true || !$auth->validateC
 
     //Check if username is available and CSRF token is valid
     if(!$auth->validateCsrfToken($csrfTokenPost)) {
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'Invalid CSRF token.'], 400);
+        }
         die("Invalid CSRF token.");
     }
     try{
         $res = $auth->createUser($usr, $eml, $pwd, null, $csrfTokenPost);
+        if($isJson) {
+            $auth->jsonResponse([
+                'error' => false,
+                'message' => 'Thanks for signing up. We have sent an email to verify your address. Please click the link in that email to activate your account.'
+            ]);
+        }
     } catch (Exception $e) {
         error_log($e);
+        if($isJson) {
+            $auth->jsonResponse(['error' => true, 'message' => 'An error occurred during signup.'], 500);
+        }
         die;
     }
     
