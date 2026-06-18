@@ -155,6 +155,22 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 )";
         $conn->exec($q);
 
+        // Create trusted devices table for MFA bypass on trusted devices
+        $q =    "CREATE TABLE trusted_devices (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                userId INT NOT NULL,
+                device_hash VARCHAR(64) NOT NULL,
+                user_agent TEXT,
+                ip_address VARCHAR(45),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (userId) REFERENCES accounts(userId) ON DELETE CASCADE,
+                INDEX (device_hash),
+                INDEX (userId)
+                )";
+        $conn->exec($q);
+
         //Create env directory and limit permissions
         mkdir("env");
         chmod("env", 0700);

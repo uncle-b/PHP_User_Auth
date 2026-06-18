@@ -713,7 +713,135 @@ class Auth{
         return str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
     }
 
-    public function initiateMFA($username, $password, $csrfToken = null){
+    /**
+     * Generate a unique fingerprint for the current device/browser
+     * Uses user agent, IP address, and server salt for security
+     * 
+     * @return string SHA-256 hash of device identifiers
+     */
+    private function generateDeviceFingerprint(){
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $salt = $_ENV['AUTH_ENCRYPTION_KEY'] ?? 'default_salt';
+        return hash('sha256', $ua . $ip . $salt);
+    }
+
+    /**
+     * Check if the current device is trusted for the given user
+     * 
+     * @param int $userId The user ID to check
+     * @return bool True if device is trusted and not expired
+     */
+    public function isTrustedDevice($userId){
+        $fp = $this->generateDeviceFingerprint();
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null) return false;
+
+        $currentTime = date('Y-m-d H:i:s');
+        $stmt = $con->prepare("SELECT id FROM trusted_devices 
+                              WHERE userId = ? AND device_hash = ? 
+                              AND expires_at > ? 
+                              AND (ip_address = ? OR user_agent = ?)
+                              LIMIT 1");
+        $stmt->bind_param('isss', $userId, $fp, $currentTime, $ip, $ua);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        
+        if($res !== false && $res->num_rows > 0){
+            // Update last_used timestamp
+            $updateStmt = $con->prepare("UPDATE trusted_devices SET last_used = NOW() WHERE id = ?");
+            $row = $res->fetch_array(MYSQLI_ASSOC);
+            $updateStmt->bind_param('i', $row['id']);
+            $updateStmt->execute();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Add the current device to the user's trusted devices list
+     * 
+     * @param int $userId The user ID to add the device for
+     * @param int $durationDays Number of days until the trust expires (default: 30)
+     * @return bool True if device was added successfully
+     */
+    public function addTrustedDevice($userId, $durationDays = 30){
+        $fp = $this->generateDeviceFingerprint();
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $expires = date('Y-m-d H:i:s', strtotime("+$durationDays days"));
+
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null) return false;
+
+        // Check if device already exists for this user
+        $stmt = $con->prepare("SELECT id FROM trusted_devices WHERE userId = ? AND device_hash = ? LIMIT 1");
+        $stmt->bind_param('is', $userId, $fp);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        
+        if($res !== false && $res->num_rows > 0){
+            // Device already exists, update expiry
+            $row = $res->fetch_array(MYSQLI_ASSOC);
+            $updateStmt = $con->prepare("UPDATE trusted_devices SET expires_at = ?, last_used = NOW() WHERE id = ?");
+            $updateStmt->bind_param('si', $expires, $row['id']);
+            return $updateStmt->execute();
+        } else {
+            // Add new trusted device
+            $stmt2 = $con->prepare("INSERT INTO trusted_devices 
+                                  (userId, device_hash, user_agent, ip_address, expires_at)
+                                  VALUES (?, ?, ?, ?, ?)");
+            $stmt2->bind_param('issss', $userId, $fp, $ua, $ip, $expires);
+            return $stmt2->execute();
+        }
+    }
+
+    /**
+     * Remove a trusted device by ID
+     * 
+     * @param int $deviceId The device ID to remove
+     * @param int $userId The user ID (for ownership verification)
+     * @return bool True if device was removed successfully
+     */
+    public function removeTrustedDevice($deviceId, $userId){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null) return false;
+
+        $stmt = $con->prepare("DELETE FROM trusted_devices WHERE id = ? AND userId = ?");
+        $stmt->bind_param('ii', $deviceId, $userId);
+        return $stmt->execute();
+    }
+
+    /**
+     * Get all trusted devices for a user
+     * 
+     * @param int $userId The user ID
+     * @return array Array of trusted devices
+     */
+    public function getTrustedDevices($userId){
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null) return [];
+
+        $stmt = $con->prepare("SELECT id, device_hash, user_agent, ip_address, created_at, expires_at, last_used 
+                              FROM trusted_devices WHERE userId = ? ORDER BY last_used DESC");
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        
+        if($res !== false && $res->num_rows > 0){
+            $devices = [];
+            while($row = $res->fetch_array(MYSQLI_ASSOC)){
+                $devices[] = $row;
+            }
+            return $devices;
+        }
+        return [];
+    }
+
+    public function initiateMFA($username, $password, $csrfToken = null, $skipMfaIfTrusted = false){
         // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
             return array(
@@ -739,13 +867,27 @@ class Auth{
                 $storedPassToken = $row['passToken'];
                 
                 if(password_verify($password, $storedPassToken)){ // $storedPassToken === $passToken
-                    $mfaCode = $this->generateMFACode();
-                    $mfaExpiry = time() + 900; // 15 minutes expiry
                     $userId = $row['userId'];
                     $email = $this->decryptDataArray([
                         "email" => $row['email'],
                         "nonce" => $row['nonce']
                     ])['email'];
+
+                    // Check if device is trusted and MFA should be skipped
+                    if ($skipMfaIfTrusted && $this->isTrustedDevice($userId)) {
+                        // Device is trusted - return success without MFA
+                        return array(
+                            'error' => false,
+                            'message' => "Authentication successful (trusted device).",
+                            'userId' => $userId,
+                            'username' => $username,
+                            'mfaSkipped' => true
+                        );
+                    }
+
+                    // Standard MFA flow
+                    $mfaCode = $this->generateMFACode();
+                    $mfaExpiry = time() + 900; // 15 minutes expiry
                     
                     $stmt2 = $con->prepare("UPDATE `accounts` SET `mfaCode`=?, `mfaExpiry`=? WHERE `userId`=?");
                     $stmt2->bind_param('sii', $mfaCode, $mfaExpiry, $userId);
@@ -774,7 +916,7 @@ class Auth{
         );
     }
 
-    public function verifyMFA($userId, $code, $password = null, $username = null, $csrfToken = null){
+    public function verifyMFA($userId, $code, $password = null, $username = null, $csrfToken = null, $trustDevice = false){
         // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
             return array(
@@ -804,6 +946,11 @@ class Auth{
                     $stmt2 = $con->prepare("UPDATE `accounts` SET `mfaCode`='', `mfaExpiry`=0 WHERE `userId`=?");
                     $stmt2->bind_param('i', $userId);
                     $stmt2->execute();
+                    
+                    // Add device to trusted list if requested
+                    if ($trustDevice) {
+                        $this->addTrustedDevice($userId);
+                    }
                     
                     // Now perform the actual sign in
                     if($username !== null && $password !== null){

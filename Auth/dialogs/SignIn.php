@@ -15,8 +15,9 @@ if(isset($requestData["mfa_code"]) && isset($requestData["userId"]) && isset($re
     $mfaCode = $requestData["mfa_code"];
     
     $csrfToken = isset($requestData["csrf_token"]) ? $requestData["csrf_token"] : null;
+    $trustDevice = isset($requestData["trust_device"]) && $requestData["trust_device"] == 1;
     try{
-        $result = $auth->verifyMFA($userId, $mfaCode, $password, $username, $csrfToken);
+        $result = $auth->verifyMFA($userId, $mfaCode, $password, $username, $csrfToken, $trustDevice);
         if($result['error'] === false && isset($result['token'])){
             // MFA verified and login complete
             $cookie_name = "X_AUTH_KEY";
@@ -130,22 +131,84 @@ $csrfToken = isset($requestData["csrf_token"]) ? $requestData["csrf_token"] : nu
 
 if($usr !== "" && $pwd !== ""){
     try{
-        $result = $auth->initiateMFA($usr, $pwd, $csrfToken);
+        $result = $auth->initiateMFA($usr, $pwd, $csrfToken, true);
         if($result['error'] === false && isset($result['userId'])){
-            // Password correct, MFA code sent
-            $mfaPending = true;
-            $mfaUserId = $result['userId'];
-            $mfaUsername = $result['username'];
-            $mfaPassword = $pwd;
-            // For JSON requests, return MFA pending state
-            if($isJson) {
-                $auth->jsonResponse([
-                    'error' => false,
-                    'mfaPending' => true,
-                    'userId' => $result['userId'],
-                    'username' => $result['username'],
-                    'message' => 'MFA code sent to your email'
-                ]);
+            // Check if MFA was skipped due to trusted device
+            if(isset($result['mfaSkipped']) && $result['mfaSkipped'] === true){
+                // Trusted device - auto-login
+                $signInResult = $auth->signIn($usr, $pwd, $csrfToken);
+                if($signInResult['error'] === false && isset($signInResult['token'])){
+                    // Login successful
+                    $cookie_name = "X_AUTH_KEY";
+                    $cookie_value = $signInResult['token'];
+                    $bodyToken = $signInResult['bodyToken'];
+                    
+                    $https = false;
+                    if($auth->isSecure()){
+                        $https = true;
+                    }
+                    
+                    $arr_cookie_options = array (
+                        'expires' => 0, 
+                        'path' => '/', 
+                        'domain' => '.'.$_SERVER['SERVER_NAME'], 
+                        'secure' => $https,
+                        'httponly' => true,
+                        'samesite' => 'Strict'
+                    );
+                    
+                    setcookie($cookie_name, $cookie_value, $arr_cookie_options);
+                    
+                    if($isJson) {
+                        $auth->jsonResponse([
+                            'error' => false,
+                            'message' => 'Login successful (trusted device)',
+                            'token' => $signInResult['token'],
+                            'bodyToken' => $bodyToken
+                        ]);
+                    }
+                    
+                    ?>
+                    <!DOCTYPE html>
+                    <html>
+                        <head>
+                            <link rel="stylesheet" href="dialogs.css">
+                            <script src="/Auth/js/fetch.js"></script>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <h1>Login successful</h1>
+                                <input id='bodyToken' type='hidden' value='<?php echo $bodyToken; ?>' name='bodyToken'/>
+                                <p>Login succeeded (trusted device).</p>
+                                <button type="button" onclick="window.location.href='/';">Continue</button>
+                            </div>
+                        </body>
+                    </html>
+                    <?php
+                    exit;
+                } else {
+                    $error = true;
+                    $errorMsg = $signInResult['message'];
+                    if($isJson) {
+                        $auth->jsonResponse(['error' => true, 'message' => $signInResult['message']], 400);
+                    }
+                }
+            } else {
+                // Password correct, MFA code sent
+                $mfaPending = true;
+                $mfaUserId = $result['userId'];
+                $mfaUsername = $result['username'];
+                $mfaPassword = $pwd;
+                // For JSON requests, return MFA pending state
+                if($isJson) {
+                    $auth->jsonResponse([
+                        'error' => false,
+                        'mfaPending' => true,
+                        'userId' => $result['userId'],
+                        'username' => $result['username'],
+                        'message' => 'MFA code sent to your email'
+                    ]);
+                }
             }
         } else {
             $error = true;
@@ -213,6 +276,8 @@ if($usr !== "" && $pwd !== ""){
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($auth->generateCsrfToken()); ?>">
                     <label for="mfa_code">Verification Code:</label>
                     <input type="text" id="mfa_code" name="mfa_code" pattern="[0-9]{4}" maxlength="4" required><br>
+                    <input type="checkbox" id="trust_device" name="trust_device" value="1">
+                    <label for="trust_device" style="display: inline; font-weight: normal;">Trust this device for 30 days</label><br>
                     <label for="submit"></label>
                     <input type="submit" id="submit" name="submit" value="Verify & Sign In">
                 </form>
