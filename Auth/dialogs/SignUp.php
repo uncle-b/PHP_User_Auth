@@ -3,6 +3,7 @@ include "../Auth2.php";
 
 // Start session for CSRF protection
 $auth->startSession();
+$auth->sendSecurityHeaders();
 
 $requestData = $auth->getRequestData();
 $isJson = $auth->isJsonRequest();

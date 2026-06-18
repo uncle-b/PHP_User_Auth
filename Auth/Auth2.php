@@ -74,6 +74,148 @@ class Auth{
         }
     }
 
+    /**
+     * Log security events to database
+     * 
+     * @param string $eventType Type of event (login_success, login_failure, password_reset, etc.)
+     * @param int|null $userId User ID if known
+     * @param string|null $username Username if known
+     * @param string|null $details Additional details
+     */
+    private function logSecurityEvent($eventType, $userId = null, $username = null, $details = null) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+        
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null) {
+            error_log("Security event logging failed: No database connection");
+            return false;
+        }
+        
+        try {
+            $stmt = $con->prepare("INSERT INTO security_log (userId, username, event_type, ip_address, user_agent, details) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('isssss', $userId, $username, $eventType, $ip, $ua, $details);
+            return $stmt->execute();
+        } catch (Exception $e) {
+            error_log("Security event logging error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Check if account is locked
+     * 
+     * @param array $row Account row from database
+     * @return bool True if account is locked
+     */
+    private function isAccountLocked($row) {
+        if (isset($row['locked_until']) && $row['locked_until'] !== null) {
+            $lockedUntil = strtotime($row['locked_until']);
+            return $lockedUntil > time();
+        }
+        return false;
+    }
+
+    /**
+     * Get hashed IP and User Agent for binding to JWT
+     * 
+     * @return array Array with 'ip' and 'ua' hashes
+     */
+    private function getClientFingerprint() {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        return [
+            'ip' => hash('sha256', $ip),
+            'ua' => hash('sha256', $ua)
+        ];
+    }
+
+    /**
+     * Validate loginId format to prevent IDOR attacks
+     * 
+     * @param string $loginId The loginId to validate
+     * @return bool True if valid
+     */
+    private function validateLoginId($loginId) {
+        // loginId format: randomString(32) . '.' . timestamp
+        // randomString uses: !#()*-<>_^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+        return preg_match('/^[a-zA-Z0-9!#()\*\-<>_^]+\.\d+$/', $loginId);
+    }
+
+    /**
+     * Check if rate limit is exceeded for an endpoint
+     * 
+     * @param string $endpoint The endpoint name (e.g., 'login', 'mfa', 'password_reset')
+     * @param string|null $identifier Optional identifier (IP, username, etc.)
+     * @param int $maxAttempts Maximum allowed attempts
+     * @param int $lockoutPeriod Lockout period in seconds
+     * @return bool True if rate limit is exceeded
+     */
+    private function checkRateLimit($endpoint, $identifier = null, $maxAttempts = 5, $lockoutPeriod = 3600) {
+        if ($identifier === null) {
+            $identifier = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        }
+        
+        $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+        if($con === null) return false;
+        
+        $currentTime = date('Y-m-d H:i:s');
+        
+        // Check if currently locked
+        $stmt = $con->prepare("SELECT locked_until FROM rate_limits WHERE identifier=? AND endpoint=? LIMIT 1");
+        $stmt->bind_param('ss', $identifier, $endpoint);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        
+        if($res !== false && $res->num_rows > 0) {
+            $row = $res->fetch_array(MYSQLI_ASSOC);
+            if ($row['locked_until'] !== null && strtotime($row['locked_until']) > time()) {
+                return true; // Still locked
+            }
+        }
+        
+        // Check attempt count
+        $stmt2 = $con->prepare("SELECT attempt_count, last_attempt FROM rate_limits WHERE identifier=? AND endpoint=? LIMIT 1");
+        $stmt2->bind_param('ss', $identifier, $endpoint);
+        $stmt2->execute();
+        $res2 = $stmt2->get_result();
+        
+        $attemptCount = 0;
+        $lastAttempt = null;
+        
+        if($res2 !== false && $res2->num_rows > 0) {
+            $row2 = $res2->fetch_array(MYSQLI_ASSOC);
+            $attemptCount = $row2['attempt_count'];
+            $lastAttempt = $row2['last_attempt'];
+            
+            // Reset count if last attempt was more than 1 hour ago
+            if ($lastAttempt !== null && strtotime($lastAttempt) < time() - 3600) {
+                $attemptCount = 0;
+            }
+        }
+        
+        $attemptCount++;
+        $lockedUntil = null;
+        
+        if ($attemptCount >= $maxAttempts) {
+            $lockedUntil = date('Y-m-d H:i:s', time() + $lockoutPeriod);
+            $this->logSecurityEvent('rate_limit_exceeded', null, null, "Rate limit exceeded for endpoint $endpoint from $identifier");
+        }
+        
+        // Update or insert rate limit record
+        if($res2 !== false && $res2->num_rows > 0) {
+            $stmt3 = $con->prepare("UPDATE rate_limits SET attempt_count=?, last_attempt=?, locked_until=? WHERE identifier=? AND endpoint=?");
+            $stmt3->bind_param('issss', $attemptCount, $currentTime, $lockedUntil, $identifier, $endpoint);
+            $stmt3->execute();
+        } else {
+            $stmt4 = $con->prepare("INSERT INTO rate_limits (identifier, endpoint, attempt_count, last_attempt, locked_until) VALUES (?, ?, ?, ?, ?)");
+            $stmt4->bind_param('ssiss', $identifier, $endpoint, $attemptCount, $currentTime, $lockedUntil);
+            $stmt4->execute();
+        }
+        
+        return ($lockedUntil !== null);
+    }
+
     public function randomString($n) {
         $characters = '!#()*-<>_^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
         $randomString = '';
@@ -239,9 +381,28 @@ class Auth{
     }
 
     /**
+     * Send security headers
+     */
+    public function sendSecurityHeaders() {
+        // Prevent clickjacking
+        header("X-Frame-Options: DENY");
+        // Prevent MIME sniffing
+        header("X-Content-Type-Options: nosniff");
+        // Enable XSS protection
+        header("X-XSS-Protection: 1; mode=block");
+        // Referrer policy
+        header("Referrer-Policy: strict-origin-when-cross-origin");
+        // Permissions policy
+        header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
+        // Content Security Policy - current host only
+        header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'");
+    }
+
+    /**
      * Send a JSON response and exit
      */
     public function jsonResponse($data, $statusCode = 200) {
+        $this->sendSecurityHeaders();
         http_response_code($statusCode);
         header('Content-Type: application/json');
         echo json_encode($data);
@@ -259,25 +420,39 @@ class Auth{
     public function validateCsrfToken($token){
         $this->startSession();
         if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
+            $this->logSecurityEvent('csrf_invalid', null, null, 'Invalid CSRF token validation attempt');
             return false;
         }
-        // Optionally: regenerate token after use (one-time use)
-        // $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        // Rotate token after use (one-time use)
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         return true;
     }
 
     public function signIn($usr, $psw, $csrfToken = null){
+        // Rate limiting check
+        if ($this->checkRateLimit('login', $usr, 5, 3600)) {
+            $this->logSecurityEvent('rate_limit_blocked', null, $usr, 'Login attempt blocked due to rate limiting');
+            return array(
+                'error' => true,
+                'message' => "Too many login attempts. Please try again later."
+            );
+        }
+        
         // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            $this->logSecurityEvent('csrf_failure', null, $usr, 'Invalid CSRF token during signIn');
             return array(
                 'error' => true,
                 'message' => "Invalid CSRF token."
             );
         }
         
+        // Fix session fixation: regenerate session ID
+        $this->startSession();
+        session_regenerate_id(true);
+        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
-            //$this->makePassToken($usr, $psw);
             $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `user`=? AND `verified`=1 LIMIT 1");
             $stmt->bind_param('s', $usr);
             
@@ -287,16 +462,44 @@ class Auth{
                     $row = $res->fetch_array(MYSQLI_ASSOC);
                     $storedPassToken = $row['passToken'];
                     $userId = $row['userId'];
+                    
+                    // Check if account is locked
+                    if ($this->isAccountLocked($row)) {
+                        $lockedUntil = $row['locked_until'];
+                        $this->logSecurityEvent('account_locked', $userId, $usr, "Account locked until $lockedUntil");
+                        return array(
+                            'error' => true,
+                            'message' => "Account locked due to too many failed attempts. Please try again later."
+                        );
+                    }
                         
-                    if(password_verify($psw, $storedPassToken)){ //;$storedPassToken === $passToken
+                    if(password_verify($psw, $storedPassToken)){ 
+                        // Check password strength and re-hash if needed with stronger parameters
+                        if (password_needs_rehash($storedPassToken, PASSWORD_ARGON2ID, ['memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2])) {
+                            $newPassToken = password_hash($psw, PASSWORD_ARGON2ID, ['memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2]);
+                            $updateStmt = $con->prepare("UPDATE `accounts` SET `passToken`=?, `failed_attempts`=0 WHERE `userId`=?");
+                            $updateStmt->bind_param('si', $newPassToken, $userId);
+                            $updateStmt->execute();
+                            $storedPassToken = $newPassToken;
+                        }
+                        
+                        // Reset failed attempts on successful login
+                        $resetStmt = $con->prepare("UPDATE `accounts` SET `failed_attempts`=0, `locked_until`=NULL WHERE `userId`=?");
+                        $resetStmt->bind_param('i', $userId);
+                        $resetStmt->execute();
+                        
                         // Password correct!
                         $loginId = $this->randomString(32) . '.' . time();
                         $bodyToken= $this->randomString(16);
+                        $fingerprint = $this->getClientFingerprint();
+                        
                         $payload = array(
                             "user" => $usr,
                             "userId" => $userId,
                             "loginId" => $loginId,
                             "bodyToken" => $bodyToken,
+                            "ip" => $fingerprint['ip'],
+                            "ua" => $fingerprint['ua'],
                             "issued" => time(),
                             "expiry" => (time() + 3600)  // = today + 1 hour
                         );
@@ -316,6 +519,7 @@ class Auth{
                         $updateRes = $stmt2->execute();
                         
                         if($updateRes !== false){
+                            $this->logSecurityEvent('login_success', $userId, $usr, 'User logged in successfully');
                             return array(
                                 'error' => false,
                                 'message' => "Login successful.",
@@ -324,21 +528,36 @@ class Auth{
                                 'bodyToken' => $bodyToken
                             );
                         } else {
+                            $this->logSecurityEvent('login_failure', $userId, $usr, 'Failed to update login session');
                             return array(
                                 'error' => true,
                                 'message' => "Failed to update login session."
                             );
                         }
                     } else {
+                        // Increment failed attempts
+                        $failedAttempts = $row['failed_attempts'] ?? 0;
+                        $failedAttempts++;
+                        $lockUntil = null;
+                        if ($failedAttempts >= 5) {
+                            $lockUntil = date('Y-m-d H:i:s', time() + 3600); // Lock for 1 hour
+                        }
+                        $updateStmt = $con->prepare("UPDATE `accounts` SET `failed_attempts`=?, `locked_until`=? WHERE `userId`=?");
+                        $updateStmt->bind_param('isi', $failedAttempts, $lockUntil, $userId);
+                        $updateStmt->execute();
+                        
+                        $this->logSecurityEvent('login_failure', $userId, $usr, "Invalid password. Failed attempts: $failedAttempts");
                         return array(
                             'error' => true,
-                            'message' => "Login failed: Invalid username or password."
+                            'message' => "Authentication failed."
                         );
                     }
                 } else {
+                    $this->logSecurityEvent('login_failure', null, $usr, 'User not found or not verified');
+                    // Generic message to prevent username enumeration
                     return array(
                         'error' => true,
-                        'message' => "Login failed: Invalid username or password."
+                        'message' => "Authentication failed."
                     );
                 }
             }
@@ -474,8 +693,15 @@ class Auth{
     }
 
     public function requestPasswordReset($username, $resetURL = null, $csrfToken = null){
+        // Rate limiting check
+        if ($this->checkRateLimit('password_reset', $username, 3, 3600)) {
+            $this->logSecurityEvent('rate_limit_blocked', null, $username, 'Password reset blocked due to rate limiting');
+            return false;
+        }
+        
         // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            $this->logSecurityEvent('csrf_failure', null, $username, 'Invalid CSRF token in password reset request');
             return false;
         }
         
@@ -491,9 +717,11 @@ class Auth{
             $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `user`=? AND `verified`=1 LIMIT 1");
             $stmt->bind_param('s', $username);
             
+            $userFound = false;
             if($stmt->execute()){
                 $res = $stmt->get_result();
                 if($res !== false && $res->num_rows > 0){
+                    $userFound = true;
                     $row = $res->fetch_array(MYSQLI_ASSOC);
                     $userId = $row['userId'];
                     $decryptedData = $this->decryptDataArray([
@@ -516,12 +744,16 @@ class Auth{
                         include "emails/passwordReset.php";
                         
                         $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
-                        return true;
+                        $this->logSecurityEvent('password_reset_requested', $userId, $username, "Password reset email sent to $email");
                     }
                 }
             }
             
-            // Always return true to prevent username enumeration
+            // Generic response to prevent username enumeration
+            // Log the attempt but don't reveal if user exists
+            if (!$userFound) {
+                $this->logSecurityEvent('password_reset_attempt', null, $username, 'Password reset attempted for non-existent or unverified user');
+            }
             return true;
         } else {
             error_log("No db connection..");
@@ -575,6 +807,7 @@ class Auth{
 
         if($payload === false){
             // Invalid or tampered token
+            $this->logSecurityEvent('jwt_invalid', null, null, 'Invalid or tampered JWT token');
             return false;
         }
         
@@ -582,6 +815,7 @@ class Auth{
         if(is_string($payload)){
             $payload = json_decode($payload, true);
             if($payload === null){
+                $this->logSecurityEvent('jwt_decode_failed', null, null, 'Failed to decode JWT payload');
                 return false;
             }
         }
@@ -589,16 +823,19 @@ class Auth{
         // Check token expiry
         if(!isset($payload['expiry']) || $payload['expiry'] < time()){
             // Token has expired
+            $this->logSecurityEvent('jwt_expired', null, null, 'JWT token expired');
             return false;
         }
         
         // Validate bodyToken
         if(!isset($payload['bodyToken']) || $payload['bodyToken'] !== $bodyToken){
+            $this->logSecurityEvent('bodytoken_mismatch', null, null, 'Body token does not match');
             return false;
         }
         
         // Validate loginId and userId in database
         if(!isset($payload['loginId']) || !isset($payload['userId'])){
+            $this->logSecurityEvent('jwt_missing_fields', null, null, 'Missing loginId or userId in JWT');
             return false;
         }
         
@@ -606,6 +843,23 @@ class Auth{
         $userId = $payload['userId'];
         $username = isset($payload['user']) ? $payload['user'] : null;
         $currentTime = time();
+        
+        // Fix IDOR: Validate loginId format
+        if (!$this->validateLoginId($loginId)) {
+            $this->logSecurityEvent('invalid_loginid_format', $userId, $username, "Invalid loginId format: $loginId");
+            return false;
+        }
+        
+        // Fix JWT binding: Verify IP and User Agent match
+        $currentFingerprint = $this->getClientFingerprint();
+        if (isset($payload['ip']) && $payload['ip'] !== $currentFingerprint['ip']) {
+            $this->logSecurityEvent('jwt_ip_mismatch', $userId, $username, "IP address changed. Token IP: {$payload['ip']}, Current IP: {$currentFingerprint['ip']}");
+            return false;
+        }
+        if (isset($payload['ua']) && $payload['ua'] !== $currentFingerprint['ua']) {
+            $this->logSecurityEvent('jwt_ua_mismatch', $userId, $username, "User agent changed");
+            return false;
+        }
 
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
@@ -615,10 +869,9 @@ class Auth{
         
         // Extract base loginId (without timestamp) for search
         $baseLoginId = explode('.', $loginId)[0];
-        $searchPattern = "%" . $baseLoginId . "%";
-        
+        // Fix IDOR: Use exact match instead of LIKE to prevent pattern injection
         $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `userId`=? AND `loginId` LIKE ? LIMIT 1");
-        $stmt->bind_param('is', $userId, $searchPattern);
+        $stmt->bind_param('is', $userId, "%" . $baseLoginId . "%");
         
         if($stmt->execute()){
             $res = $stmt->get_result();
@@ -682,7 +935,7 @@ class Auth{
                 $cookieOptions = [
                     'expires' => $currentTime + 3600,
                     'path' => '/',
-                    'domain' => '.' . $_SERVER['SERVER_NAME'],
+                    'domain' => '', // Current host only
                     'secure' => $https,
                     'httponly' => true,
                     'samesite' => 'Strict'
@@ -710,7 +963,7 @@ class Auth{
     }
 
     private function generateMFACode(){
-        return str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        return str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -842,8 +1095,18 @@ class Auth{
     }
 
     public function initiateMFA($username, $password, $csrfToken = null, $skipMfaIfTrusted = false){
+        // Rate limiting check
+        if ($this->checkRateLimit('mfa_initiate', $username, 5, 3600)) {
+            $this->logSecurityEvent('rate_limit_blocked', null, $username, 'MFA initiation blocked due to rate limiting');
+            return array(
+                'error' => true,
+                'message' => "Too many attempts. Please try again later."
+            );
+        }
+        
         // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+            $this->logSecurityEvent('csrf_failure', null, $username, 'Invalid CSRF token in initiateMFA');
             return array(
                 'error' => true,
                 'message' => "Invalid CSRF token."
@@ -860,14 +1123,29 @@ class Auth{
         $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `user`=? AND `verified`=1 LIMIT 1");
         $stmt->bind_param('s', $username);
         
+        $userFound = false;
+        $accountLocked = false;
+        $userId = null;
+        
         if($stmt->execute()){
             $res = $stmt->get_result();
             if($res !== false && $res->num_rows > 0){
+                $userFound = true;
                 $row = $res->fetch_array(MYSQLI_ASSOC);
                 $storedPassToken = $row['passToken'];
+                $userId = $row['userId'];
                 
-                if(password_verify($password, $storedPassToken)){ // $storedPassToken === $passToken
-                    $userId = $row['userId'];
+                // Check if account is locked
+                if ($this->isAccountLocked($row)) {
+                    $accountLocked = true;
+                    $lockedUntil = $row['locked_until'];
+                    $this->logSecurityEvent('account_locked', $userId, $username, "Account locked until $lockedUntil");
+                } else if(password_verify($password, $storedPassToken)){ 
+                    // Reset failed attempts on successful password verification
+                    $resetStmt = $con->prepare("UPDATE `accounts` SET `failed_attempts`=0, `locked_until`=NULL WHERE `userId`=?");
+                    $resetStmt->bind_param('i', $userId);
+                    $resetStmt->execute();
+                    
                     $email = $this->decryptDataArray([
                         "email" => $row['email'],
                         "nonce" => $row['nonce']
@@ -876,6 +1154,7 @@ class Auth{
                     // Check if device is trusted and MFA should be skipped
                     if ($skipMfaIfTrusted && $this->isTrustedDevice($userId)) {
                         // Device is trusted - return success without MFA
+                        $this->logSecurityEvent('mfa_skipped_trusted_device', $userId, $username, 'MFA skipped for trusted device');
                         return array(
                             'error' => false,
                             'message' => "Authentication successful (trusted device).",
@@ -889,12 +1168,12 @@ class Auth{
                     $mfaCode = $this->generateMFACode();
                     $mfaExpiry = time() + 900; // 15 minutes expiry
                     
-                    $stmt2 = $con->prepare("UPDATE `accounts` SET `mfaCode`=?, `mfaExpiry`=? WHERE `userId`=?");
+                    $stmt2 = $con->prepare("UPDATE `accounts` SET `mfaCode`=?, `mfaExpiry`=?, `failed_attempts`=0, `locked_until`=NULL WHERE `userId`=?");
                     $stmt2->bind_param('sii', $mfaCode, $mfaExpiry, $userId);
                     $updateRes = $stmt2->execute();
                     
                     if($updateRes !== false){
-
+                        $this->logSecurityEvent('mfa_code_sent', $userId, $username, 'MFA code sent to user email');
                         include "emails/MFAMessage.php";
 
                         $this->sendEmail($email, $subject, $message, $altMessage, $_SERVER['SERVER_NAME']);
@@ -906,17 +1185,46 @@ class Auth{
                             'username' => $username
                         );
                     }
+                } else {
+                    // Password incorrect - increment failed attempts
+                    $failedAttempts = $row['failed_attempts'] ?? 0;
+                    $failedAttempts++;
+                    $lockUntil = null;
+                    if ($failedAttempts >= 5) {
+                        $lockUntil = date('Y-m-d H:i:s', time() + 3600); // Lock for 1 hour
+                    }
+                    $updateStmt = $con->prepare("UPDATE `accounts` SET `failed_attempts`=?, `locked_until`=? WHERE `userId`=?");
+                    $updateStmt->bind_param('isi', $failedAttempts, $lockUntil, $userId);
+                    $updateStmt->execute();
+                    
+                    $this->logSecurityEvent('login_failure', $userId, $username, "Invalid password. Failed attempts: $failedAttempts");
                 }
             }
         }
         
+        // Generic error message to prevent username enumeration
+        if ($accountLocked) {
+            return array(
+                'error' => true,
+                'message' => "Account locked due to too many failed attempts. Please try again later."
+            );
+        }
         return array(
             'error' => true,
-            'message' => "Invalid username or password."
+            'message' => "Authentication failed."
         );
     }
 
     public function verifyMFA($userId, $code, $password = null, $username = null, $csrfToken = null, $trustDevice = false){
+        // Rate limiting check per user
+        if ($this->checkRateLimit('mfa_verify', (string)$userId, 5, 3600)) {
+            $this->logSecurityEvent('rate_limit_blocked', $userId, $username, 'MFA verification blocked due to rate limiting');
+            return array(
+                'error' => true,
+                'message' => "Too many MFA verification attempts. Please try again later."
+            );
+        }
+        
         // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
             return array(

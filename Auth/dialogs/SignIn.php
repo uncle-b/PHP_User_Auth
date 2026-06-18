@@ -3,6 +3,7 @@ include "../Auth2.php";
 
 // Start session for CSRF protection
 $auth->startSession();
+$auth->sendSecurityHeaders();
 
 $requestData = $auth->getRequestData();
 $isJson = $auth->isJsonRequest();
@@ -32,7 +33,7 @@ if(isset($requestData["mfa_code"]) && isset($requestData["userId"]) && isset($re
             $arr_cookie_options = array (
                 'expires' => 0, 
                 'path' => '/', 
-                'domain' => '.'.$_SERVER['SERVER_NAME'], // leading dot for compatibility or use subdomain
+                'domain' => '', // Current host only
                 'secure' => $https,     // or false
                 'httponly' => true,    // or false
                 'samesite' => 'Strict' // None || Lax  || Strict
@@ -151,7 +152,7 @@ if($usr !== "" && $pwd !== ""){
                     $arr_cookie_options = array (
                         'expires' => 0, 
                         'path' => '/', 
-                        'domain' => '.'.$_SERVER['SERVER_NAME'], 
+                        'domain' => '', // Current host only
                         'secure' => $https,
                         'httponly' => true,
                         'samesite' => 'Strict'

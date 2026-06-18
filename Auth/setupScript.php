@@ -148,9 +148,11 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 loginId MEDIUMTEXT,
                 resetToken TINYTEXT,
                 resetExpiry INT(11) DEFAULT 0,
-                mfaCode CHAR(4),
+                mfaCode CHAR(6),
                 mfaExpiry INT(11) DEFAULT 0,
                 verified BOOLEAN DEFAULT FALSE,
+                failed_attempts INT DEFAULT 0,
+                locked_until TIMESTAMP NULL,
                 modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )";
         $conn->exec($q);
@@ -168,6 +170,36 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 FOREIGN KEY (userId) REFERENCES accounts(userId) ON DELETE CASCADE,
                 INDEX (device_hash),
                 INDEX (userId)
+                )";
+        $conn->exec($q);
+        
+        // Create security log table
+        $q =    "CREATE TABLE security_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                userId INT NULL,
+                username VARCHAR(255) NULL,
+                event_type VARCHAR(50) NOT NULL,
+                ip_address VARCHAR(45),
+                user_agent TEXT,
+                details TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX (userId),
+                INDEX (event_type),
+                INDEX (created_at)
+                )";
+        $conn->exec($q);
+        
+        // Create rate limiting table
+        $q =    "CREATE TABLE rate_limits (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                identifier VARCHAR(255) NOT NULL,
+                endpoint VARCHAR(50) NOT NULL,
+                attempt_count INT DEFAULT 0,
+                last_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                locked_until TIMESTAMP NULL,
+                INDEX (identifier),
+                INDEX (endpoint),
+                INDEX (locked_until)
                 )";
         $conn->exec($q);
 
