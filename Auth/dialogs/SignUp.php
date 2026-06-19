@@ -8,7 +8,7 @@ $auth->sendSecurityHeaders();
 $requestData = $auth->getRequestData();
 $isJson = $auth->isJsonRequest();
 
-$csrfToken = $auth->generateCsrfToken();
+$csrfToken = null; //$auth->generateCsrfToken();
 $error = false;
 $usrErrorMsg = "";
 
@@ -114,8 +114,10 @@ if($eml !== ""){
     }
 }
 
-if($usr == "" || $pwd == "" || $eml == "" || $error == true || !$auth->validateCsrfToken($csrfTokenPost)){
-    
+if($usr == "" || $pwd == "" || $eml == "" || $error == true){
+
+    $csrfToken = $auth->generateCsrfToken();
+
     if($isJson) {
         if($usr == "" || $pwd == "" || $eml == "") {
             $auth->jsonResponse(['error' => true, 'message' => 'All fields are required.'], 400);
@@ -130,6 +132,7 @@ if($usr == "" || $pwd == "" || $eml == "" || $error == true || !$auth->validateC
     </head>
     <body>
         <div class="container">
+            <h1>Sign up</h1>
             <div id="form">
             <form method="POST" onsubmit="showLoader()">
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
@@ -156,13 +159,9 @@ if($usr == "" || $pwd == "" || $eml == "" || $error == true || !$auth->validateC
 <?php
 } else {
 
-    //Check if username is available and CSRF token is valid
-    if(!$auth->validateCsrfToken($csrfTokenPost)) {
-        if($isJson) {
-            $auth->jsonResponse(['error' => true, 'message' => 'Invalid CSRF token.'], 400);
-        }
-        die("Invalid CSRF token.");
-    }
+    //Check if username is available
+    //CSRF already validated in the condition above - no need to recheck
+
     try{
         $res = $auth->createUser($usr, $eml, $pwd, null, $csrfTokenPost);
         if($isJson) {

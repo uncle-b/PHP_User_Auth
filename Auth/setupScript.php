@@ -160,7 +160,7 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
         // Create trusted devices table for MFA bypass on trusted devices
         $q =    "CREATE TABLE trusted_devices (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                userId INT NOT NULL,
+                userId INT(6) UNSIGNED NOT NULL,
                 device_hash VARCHAR(64) NOT NULL,
                 user_agent TEXT,
                 ip_address VARCHAR(45),
@@ -176,7 +176,7 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
         // Create security log table
         $q =    "CREATE TABLE security_log (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                userId INT NULL,
+                userId INT(6) UNSIGNED NULL,
                 username VARCHAR(255) NULL,
                 event_type VARCHAR(50) NOT NULL,
                 ip_address VARCHAR(45),

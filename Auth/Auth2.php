@@ -287,6 +287,7 @@ class Auth{
 
     public function createUser($usr, $eml, $psw, $validationURL=null, $csrfToken = null){
         // Validate CSRF token for unauthenticated requests
+
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
             return false;
         }
@@ -573,6 +574,7 @@ class Auth{
             $authenticated = $this->authenticateRequest();
         }
 
+        error_log(json_encode($authenticated));
         if($this->userId!==null && $this->loginId!==null){
             
             $id = $this->userId;
@@ -620,10 +622,6 @@ class Auth{
                 error_log("No db connection..");
                 throw new Exception("Invalid database connection.");
             }
-
-
-
-
         }
 
         
@@ -801,7 +799,7 @@ class Auth{
         if($jwtToken === null || $bodyToken === null){
             return false;
         }
-        
+
         $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
         $payload = checkJWTHS256($jwtToken, $encKey);
 
@@ -810,7 +808,7 @@ class Auth{
             $this->logSecurityEvent('jwt_invalid', null, null, 'Invalid or tampered JWT token');
             return false;
         }
-        
+
         // Decode payload if it's a string
         if(is_string($payload)){
             $payload = json_decode($payload, true);
@@ -819,7 +817,7 @@ class Auth{
                 return false;
             }
         }
-        
+
         // Check token expiry
         if(!isset($payload['expiry']) || $payload['expiry'] < time()){
             // Token has expired
@@ -832,7 +830,7 @@ class Auth{
             $this->logSecurityEvent('bodytoken_mismatch', null, null, 'Body token does not match');
             return false;
         }
-        
+
         // Validate loginId and userId in database
         if(!isset($payload['loginId']) || !isset($payload['userId'])){
             $this->logSecurityEvent('jwt_missing_fields', null, null, 'Missing loginId or userId in JWT');
@@ -856,6 +854,7 @@ class Auth{
             $this->logSecurityEvent('jwt_ip_mismatch', $userId, $username, "IP address changed. Token IP: {$payload['ip']}, Current IP: {$currentFingerprint['ip']}");
             return false;
         }
+
         if (isset($payload['ua']) && $payload['ua'] !== $currentFingerprint['ua']) {
             $this->logSecurityEvent('jwt_ua_mismatch', $userId, $username, "User agent changed");
             return false;
@@ -866,12 +865,13 @@ class Auth{
             error_log("No db connection..");
             return false;
         }
-        
+
         // Extract base loginId (without timestamp) for search
         $baseLoginId = explode('.', $loginId)[0];
+        $likeStatement = "%" . $baseLoginId . "%";
         // Fix IDOR: Use exact match instead of LIKE to prevent pattern injection
         $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `userId`=? AND `loginId` LIKE ? LIMIT 1");
-        $stmt->bind_param('is', $userId, "%" . $baseLoginId . "%");
+        $stmt->bind_param('is', $userId, $likeStatement);
         
         if($stmt->execute()){
             $res = $stmt->get_result();
@@ -999,7 +999,7 @@ class Auth{
                               AND expires_at > ? 
                               AND (ip_address = ? OR user_agent = ?)
                               LIMIT 1");
-        $stmt->bind_param('isss', $userId, $fp, $currentTime, $ip, $ua);
+        $stmt->bind_param('issss', $userId, $fp, $currentTime, $ip, $ua);
         $stmt->execute();
         $res = $stmt->get_result();
         
@@ -1104,15 +1104,6 @@ class Auth{
             );
         }
         
-        // Validate CSRF token for unauthenticated requests
-        if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
-            $this->logSecurityEvent('csrf_failure', null, $username, 'Invalid CSRF token in initiateMFA');
-            return array(
-                'error' => true,
-                'message' => "Invalid CSRF token."
-            );
-        }
-        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
             error_log("No db connection..");
@@ -1153,14 +1144,17 @@ class Auth{
 
                     // Check if device is trusted and MFA should be skipped
                     if ($skipMfaIfTrusted && $this->isTrustedDevice($userId)) {
-                        // Device is trusted - return success without MFA
+                        // Device is trusted - perform sign in directly
                         $this->logSecurityEvent('mfa_skipped_trusted_device', $userId, $username, 'MFA skipped for trusted device');
+                        return $this->signIn($username, $password, $csrfToken);
+                    }
+
+                    // Only validate CSRF if we're actually going to send MFA code
+                    if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+                        $this->logSecurityEvent('csrf_failure', null, $username, 'Invalid CSRF token in initiateMFA');
                         return array(
-                            'error' => false,
-                            'message' => "Authentication successful (trusted device).",
-                            'userId' => $userId,
-                            'username' => $username,
-                            'mfaSkipped' => true
+                            'error' => true,
+                            'message' => "Invalid CSRF token."
                         );
                     }
 
