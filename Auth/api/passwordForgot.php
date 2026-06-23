@@ -9,6 +9,7 @@ $JSON = json_decode(file_get_contents('php://input'), true);
 
 $username = isset($JSON['username']) ? $JSON['username'] : '';
 $csrfToken = isset($JSON['csrfToken']) ? $JSON['csrfToken'] : null;
+$resetURL = isset($JSON['resetURL']) ? $JSON['resetURL'] : null;
 
 if($username === ''){
     $result = array(
@@ -20,7 +21,7 @@ if($username === ''){
 }
 
 try{
-    $success = $auth->requestPasswordReset($username, null, $csrfToken);
+    $success = $auth->requestPasswordReset($username, $resetURL, $csrfToken);
     if($success === true){
         $result = array(
             'error' => false,

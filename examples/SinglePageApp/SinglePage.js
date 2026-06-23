@@ -24,6 +24,26 @@ let showPage = (pageId) => {
 }
 
 
+// Global variables for password reset
+let resetAccount = null;
+let resetToken = null;
+
+// Check URL parameters on page load for password reset
+function checkUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const account = urlParams.get('account');
+    const token = urlParams.get('token');
+    
+    if (account && token) {
+        resetAccount = account;
+        resetToken = token;
+        // Clear the URL parameters to avoid showing them in the address bar
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Show the password reset page
+        showPage('page-password-reset');
+    }
+}
+
 let signUp = async () => {
 
     let usr = getEl("usr");
@@ -219,6 +239,150 @@ let showSecretData = async () => {
     showPage("page-content");
 }
 
+
+// Password Forgot function
+let passwordForgot = async () => {
+    let username = getEl("forgot-username");
+    
+    if(!username.value || username.value.length < 3) {
+        getEl("password-forgot-message").innerHTML = "Please enter a valid username (minimum 3 characters).";
+        return;
+    }
+
+    let req = {
+        username: username.value,
+        resetURL: window.location.origin + window.location.pathname
+    };
+    
+    if (csrfToken) {
+        req.csrfToken = csrfToken;
+    }
+
+    console.log("Password forgot request:", req);
+
+    loaderMsg("Sending reset link...");
+    showPage("page-loader");
+
+    let url = "/Auth/api/passwordForgot.php";
+    let method = "POST";
+    let res = await authFetchJSON(url, req, bodyToken);
+
+    console.log(JSON.stringify(res));
+
+    if(res.error === false) {
+        // Success - show success message
+        getEl("password-forgot-message").innerHTML = res.message;
+        showPage("page-password-forgot");
+    } else {
+        // Error
+        getEl("password-forgot-message").innerHTML = res.message;
+        showPage("page-password-forgot");
+    }
+}
+
+// Password Reset function
+let passwordReset = async () => {
+    let pwd1 = getEl("reset-pwd1");
+    let pwd2 = getEl("reset-pwd2");
+    
+    if(!pwd1.value || !pwd2.value) {
+        getEl("password-reset-message").innerHTML = "Please enter and confirm your new password.";
+        return;
+    }
+    
+    if(pwd1.value !== pwd2.value) {
+        getEl("password-reset-message").innerHTML = "Passwords do not match.";
+        return;
+    }
+    
+    if(!validatePassWord(pwd1)) {
+        getEl("password-reset-message").innerHTML = "Password does not meet requirements.";
+        return;
+    }
+    
+    if(!resetAccount || !resetToken) {
+        getEl("password-reset-message").innerHTML = "Invalid or expired reset link.";
+        return;
+    }
+
+    let req = {
+        account: resetAccount,
+        token: resetToken,
+        newPassword: pwd1.value
+    };
+    
+    if (csrfToken) {
+        req.csrfToken = csrfToken;
+    }
+
+    console.log("Password reset request:", req);
+
+    loaderMsg("Resetting password...");
+    showPage("page-loader");
+
+    let url = "/Auth/api/passwordReset.php";
+    let method = "POST";
+    let res = await authFetchJSON(url, req, bodyToken);
+
+    console.log(JSON.stringify(res));
+
+    if(res.error === false) {
+        // Success - reset the global variables and show success page
+        resetAccount = null;
+        resetToken = null;
+        pwd1.value = "";
+        pwd2.value = "";
+        showPage("page-password-reset-success");
+    } else {
+        // Error
+        getEl("password-reset-message").innerHTML = res.message;
+        showPage("page-password-reset");
+    }
+}
+
+// Toggle password visibility for reset form
+function togglePasswordVisibility() {
+    let pwd1 = getEl("reset-pwd1");
+    let pwd2 = getEl("reset-pwd2");
+    
+    if(pwd1.type === "password") {
+        pwd1.type = "text";
+        pwd2.type = "text";
+    } else {
+        pwd1.type = "password";
+        pwd2.type = "password";
+    }
+}
+
+// Validate password reset form
+function validatePasswordReset() {
+    let pwd1 = getEl("reset-pwd1");
+    let pwd2 = getEl("reset-pwd2");
+    let subm = getEl("button-password-reset");
+    
+    // Reset styles
+    pwd1.style.backgroundColor = "#ffffff";
+    pwd2.style.backgroundColor = "#ffffff";
+    
+    // Validate password strength
+    if(validatePassWord(pwd1) === false) {
+        subm.disabled = true;
+        pwd1.style.backgroundColor = "#ffcccc";
+        return;
+    }
+    
+    // Validate passwords match
+    if(pwd2.value !== pwd1.value) {
+        subm.disabled = true;
+        pwd2.style.backgroundColor = "#ffcccc";
+        return;
+    }
+    
+    // If both validations pass
+    if(validatePassWord(pwd1) === true && pwd2.value === pwd1.value) {
+        subm.disabled = false;
+    }
+}
 
 
 /*None
