@@ -32,7 +32,7 @@ setcookie("X_AUTH_KEY", "", $cookieOptions);
             <h1>Sign up</h1>
             <div id="sign-up-form">
                 <label>User name</label>
-                <input type="text" id="usr" onkeyup="validateInput()"/><br/>
+                <input type="text" id="signup-usr" onkeyup="validateInput()"/><br/>
                 <label>Email address</label>
                 <input type="email" id="eml" onkeyup="validateInput()"/><br/>
                 <label>Password</label>

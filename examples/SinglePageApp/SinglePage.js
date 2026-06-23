@@ -46,7 +46,7 @@ function checkUrlParams() {
 
 let signUp = async () => {
 
-    let usr = getEl("usr");
+    let usr = getEl("signup-usr");
     let pwd = getEl("pwd1");
     let eml = getEl("eml");
 

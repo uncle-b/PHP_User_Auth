@@ -26,7 +26,7 @@ function validateInput(){
 
     document.getElementById("pwd1").style.backgroundColor = "#ffffff";
     document.getElementById("pwd2").style.backgroundColor = "#ffffff";
-    document.getElementById("usr").style.backgroundColor = "#ffffff";
+    document.getElementById("signup-usr").style.backgroundColor = "#ffffff";
     document.getElementById("eml").style.backgroundColor = "#ffffff";
 
     if(validatePassWord(document.getElementById("pwd1"))==false){
@@ -43,8 +43,8 @@ function validateInput(){
         subm.disabled = true;
         document.getElementById("eml").style.backgroundColor = "#ffcccc";
     }
-    if(validateUserName(document.getElementById("usr"))==false){
+    if(validateUserName(document.getElementById("signup-usr"))==false){
         subm.disabled = true;
-        document.getElementById("usr").style.backgroundColor = "#ffcccc";
+        document.getElementById("signup-usr").style.backgroundColor = "#ffcccc";
     }
 }
