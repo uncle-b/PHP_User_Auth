@@ -10,6 +10,17 @@ $res = $auth->signOut($onAllAccounts);
 
 $result = ['error'=>true, 'message'=>'sign out failed.'];
 if($res){
+    
+    $currentTime = time();
+    $cookieOptions = [
+        'expires' => $currentTime - 86400,
+        'path' => '/',
+        'domain' => '', // Current host only
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Strict'
+    ];
+    setcookie("X_AUTH_KEY", "", $cookieOptions);
     $result = ['error'=>false, 'message'=>'sign out completed'];
 }
 
