@@ -1,17 +1,3 @@
-<?php
-// Overwrite any existing httponly cookies from previous sessions.
-$currentTime = time();
-$cookieOptions = [
-    'expires' => $currentTime - 86400,
-    'path' => '/',
-    'domain' => '', // Current host only
-    'secure' => true,
-    'httponly' => true,
-    'samesite' => 'Strict'
-];
-setcookie("X_AUTH_KEY", "", $cookieOptions);
-
-?>
 <!DOCTYPE html>
 <html>
     <head>
@@ -65,7 +51,9 @@ setcookie("X_AUTH_KEY", "", $cookieOptions);
                 <input type="password" id="psw" /><br/>
                 <label></label>
                 <button type="button" onclick="signIn();">Sign in</button> 
+                <label></label>
                 <button type="button" onclick="showPage('page-sign-up');">Sign up</button><br/>
+                <label></label>
                 <button type="button" onclick="showPage('page-password-forgot');" style="margin-top: 10px; background: none; border: none; color: #007bff; cursor: pointer; text-decoration: underline;">Forgot password?</button><br/>
                 <span class ="errorMsg" id="sign-in-message"></span>
             </div>
@@ -161,7 +149,7 @@ setcookie("X_AUTH_KEY", "", $cookieOptions);
             startPage = "page-password-reset";
         }
         
-        showPage(startPage);
+        pageLoader();
         checkUrlParams();
     </script>
 </html>

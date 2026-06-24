@@ -490,6 +490,11 @@ class Auth{
                         $resetStmt->bind_param('i', $userId);
                         $resetStmt->execute();
                         
+                        $resetStmt = $con->prepare("UPDATE `rate_limits` SET `attempt_count`=0 WHERE `identifier`=?");
+                        $resetStmt->bind_param('s', $usr);
+                        $resetStmt->execute();
+
+
                         // Password correct!
                         $loginId = $this->randomString(32) . '.' . time();
                         $bodyToken= $this->randomString(16);
@@ -527,7 +532,8 @@ class Auth{
                                 'message' => "Login successful.",
                                 'token' => $token,
                                 'loginId' => $loginId,
-                                'bodyToken' => $bodyToken
+                                'bodyToken' => $bodyToken,
+                                'userId'=> $userId
                             );
                         } else {
                             $this->logSecurityEvent('login_failure', $userId, $usr, 'Failed to update login session');
@@ -575,7 +581,6 @@ class Auth{
             $authenticated = $this->authenticateRequest();
         }
 
-        error_log(json_encode($authenticated));
         if($this->userId!==null && $this->loginId!==null){
             
             $id = $this->userId;
@@ -1105,44 +1110,30 @@ class Auth{
                 'message' => "Too many attempts. Please try again later."
             );
         }
-
-        error_log("checkpoint 1");
         
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
             error_log("No db connection..");
             throw new Exception("Invalid database connection.");
         }
-        
-        error_log("checkpoint 2");
 
         //$this->makePassToken($username, $password);
         $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `user`=? AND `verified`=1 LIMIT 1");
         $stmt->bind_param('s', $username);
         
-        error_log("SELECT * FROM `accounts` WHERE `user`=$username AND `verified`=1 LIMIT 1");
-
         $userFound = false;
         $accountLocked = false;
         $userId = null;
-        
-        error_log("checkpoint 3");
 
         if($stmt->execute()){
 
-            error_log("checkpoint 4");
-
             $res = $stmt->get_result();
-
-            error_log(json_encode($res));
 
             if($res !== false && $res->num_rows > 0){
                 $userFound = true;
                 $row = $res->fetch_array(MYSQLI_ASSOC);
                 $storedPassToken = $row['passToken'];
                 $userId = $row['userId'];
-                
-                error_log("checkpoint 5");
 
                 // Check if account is locked
                 if ($this->isAccountLocked($row)) {
@@ -1151,26 +1142,27 @@ class Auth{
                     $this->logSecurityEvent('account_locked', $userId, $username, "Account locked until $lockedUntil");
                 } else if(password_verify($password, $storedPassToken)){ 
 
-                    error_log("checkpoint 6");
-                    //<-----------------------!!!!!!!!!!!!!!!!!!!!
                     // Reset failed attempts on successful password verification
                     $resetStmt = $con->prepare("UPDATE `accounts` SET `failed_attempts`=0, `locked_until`=NULL WHERE `userId`=?");
                     $resetStmt->bind_param('i', $userId);
                     $resetStmt->execute();
                     
+                    $resetStmt = $con->prepare("UPDATE `rate_limits` SET `attempt_count`=0 WHERE `identifier`=?");
+                    $resetStmt->bind_param('s', $username);
+                    $resetStmt->execute();
+
                     $email = $this->decryptDataArray([
                         "email" => $row['email'],
                         "nonce" => $row['nonce']
                     ])['email'];
 
-                    error_log("checkpoint 7");
                     // Check if device is trusted and MFA should be skipped
                     if ($skipMfaIfTrusted && $this->isTrustedDevice($userId)) {
                         // Device is trusted - perform sign in directly
                         $this->logSecurityEvent('mfa_skipped_trusted_device', $userId, $username, 'MFA skipped for trusted device');
                         return $this->signIn($username, $password, $csrfToken);
                     }
-                    error_log("checkpoint 8");
+
                     // Only validate CSRF if we're actually going to send MFA code
                     if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
                         $this->logSecurityEvent('csrf_failure', null, $username, 'Invalid CSRF token in initiateMFA');
@@ -1180,7 +1172,6 @@ class Auth{
                         );
                     }
 
-                    error_log("checkpoint 9");
                     // Standard MFA flow
                     $mfaCode = $this->generateMFACode();
                     $mfaExpiry = time() + 900; // 15 minutes expiry
@@ -1367,8 +1358,6 @@ class Auth{
 */
 
 $auth = new Auth();
-
-error_log("Auth included");
 
 if($auth->active === false && $auth_muteSetup !== true){
     $docRoot  = $_SERVER["DOCUMENT_ROOT"];

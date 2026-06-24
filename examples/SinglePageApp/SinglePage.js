@@ -2,6 +2,14 @@ let bodyToken = null;
 let csrfToken = null;
 let userId = null;
 let signedIn = false;
+let sessionData = sessionStorage.getItem("sessionData")
+
+if(sessionData){
+    let sess = JSON.parse(sessionData);
+    if(sess.bodyToken){bodyToken = sess.bodyToken};
+    if(sess.userId){userId = sess.userId};
+}
+
 
 let getEl = (id) => {
     return document.getElementById(id);
@@ -61,16 +69,12 @@ let signUp = async () => {
         req.csrfToken = csrfToken;
     }
 
-    console.log(req);
-
     loaderMsg("Signing you up...")
     showPage("page-loader");
 
     let url = "/Auth/api/SignUp.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken);
-
-    console.log(JSON.stringify(res));
 
     if(res.error===false){
         showPage("page-sign-up-success");
@@ -101,8 +105,6 @@ let signIn = async () => {
         }
 
 
-        console.log(req);
-
         loaderMsg("Signing you in...")
         showPage("page-loader");
 
@@ -110,8 +112,6 @@ let signIn = async () => {
         let url = "/Auth/api/SignIn.php";
         let method = "POST";
         let res = await authFetchJSON(url, req, bodyToken);
-
-        console.log(JSON.stringify(res));
 
         if(res.error===false){
             //Sign in successful
@@ -125,6 +125,15 @@ let signIn = async () => {
                 if(res.csrfToken){csrfToken = res.csrfToken};
                 if(res.userId){userId = res.userId};
                 signedIn = true;
+
+                let sess = {
+                            bodyToken: res.bodyToken,
+                            userId: res.userId
+                            };
+
+                sessionStorage.setItem("sessionData", JSON.stringify(sess));
+
+
                 showPage("page-content");
             }
 
@@ -150,12 +159,6 @@ let mfaComplete = async () => {
     let trustDevice = getEl("trust-device");
     let mfa = getEl("mfa_code");
 
-
-    console.log("Complete MFA procedure")
-    console.log(usr.value);
-    console.log(psw.value);
-    console.log(mfa.value);
-
     if(usr.value && psw.value && mfa.value){
 
         let req = {
@@ -167,16 +170,12 @@ let mfaComplete = async () => {
             trustDevice: trustDevice.checked
         }
 
-        console.log(JSON.stringify(req));
-
         loaderMsg("Checking MFA code...")
         showPage("page-loader");
 
         let url = "/Auth/api/SignIn.php";
         let method = "POST";
         let res = await authFetchJSON(url, req, bodyToken);
-
-        console.log(JSON.stringify(res));
 
         if(res.error === false){
             // Sign in completed
@@ -206,16 +205,12 @@ let signOut = async () => {
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken, method);
 
-    console.log(JSON.stringify(res));
+    bodyToken = null;
+    csrfToken = null;
+    userId = null;
+    signedIn = false;
 
-    if(res.error === false){
-        let bodyToken = null;
-        let csrfToken = null;
-        let userId = null;
-        let signedIn = false;
-    } else {
-        alert(res.message);
-    }
+    sessionStorage.removeItem("sessionData");
     
     showPage("page-sign-in");
 }
@@ -229,8 +224,6 @@ let showSecretData = async () => {
     let url = "SecretContent.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken, method);
-
-    console.log(JSON.stringify(res));
 
     //Show response
     let dest = getEl("secret-content");
@@ -258,16 +251,12 @@ let passwordForgot = async () => {
         req.csrfToken = csrfToken;
     }
 
-    console.log("Password forgot request:", req);
-
     loaderMsg("Sending reset link...");
     showPage("page-loader");
 
     let url = "/Auth/api/passwordForgot.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken);
-
-    console.log(JSON.stringify(res));
 
     if(res.error === false) {
         // Success - show success message
@@ -315,16 +304,12 @@ let passwordReset = async () => {
         req.csrfToken = csrfToken;
     }
 
-    console.log("Password reset request:", req);
-
     loaderMsg("Resetting password...");
     showPage("page-loader");
 
     let url = "/Auth/api/passwordReset.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken);
-
-    console.log(JSON.stringify(res));
 
     if(res.error === false) {
         // Success - reset the global variables and show success page
@@ -415,15 +400,15 @@ function signInPage(){
 
 
 }
-
+*/
 
 function pageLoader(){
 
     if(bodyToken === null){
-        signInPage();
+        showPage("page-sign-in");;
+    } else {
+        showPage("page-content");
     }
-
-
-
 }
-*/
+
+

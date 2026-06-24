@@ -63,7 +63,8 @@ try{
                 'error' => false,
                 'message' => 'Login successful',
                 'token' => $result['token'],
-                'bodyToken' => $bodyToken
+                'bodyToken' => $bodyToken,
+                'userId'=> $result['userId']
             ]);
         } else {
             $mfaError = true;
@@ -106,7 +107,8 @@ try{
                 'error' => false,
                 'message' => 'Login successful (trusted device)',
                 'token' => $result['token'],
-                'bodyToken' => $bodyToken
+                'bodyToken' => $bodyToken,
+                'userId' => $result['userId']
             ]);
 
 

@@ -80,6 +80,7 @@ async function authFetchJSON(url, request, bodyToken, method="POST"){
 }
 ```
 Note that the above function is included in Auth/js/fetch.js
+Please see the examples folder for a working example single-page application.
 
 ## Auth class methods
 
