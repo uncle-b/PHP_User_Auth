@@ -217,7 +217,7 @@ class Auth{
     }
 
     public function randomString($n) {
-        $characters = '!#()*-<>_^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $characters = '!#()*-_^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
         $randomString = '';
         for ($i = 0; $i < $n; $i++) {
             $index = random_int(0, strlen($characters) - 1);
