@@ -223,21 +223,21 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
         fclose($envFile);
 
         //Create gitignore file
-        $authDir = str_replace($_SERVER["DOCUMENT_ROOT"]."/","",getcwd());
-        $gitFile = fopen($_SERVER["DOCUMENT_ROOT"]."/.gitignore", "a+");
-        $txt = "$authDir/env/\n";
-        $txt.= "vendor/\n";
-        fwrite($gitFile, $txt);
-        fclose($gitFile);
+        // $authDir = str_replace($_SERVER["DOCUMENT_ROOT"]."/","",getcwd());
+        // $gitFile = fopen($_SERVER["DOCUMENT_ROOT"]."/.gitignore", "a+");
+        // $txt = "$authDir/env/\n";
+        // $txt.= "vendor/\n";
+        // fwrite($gitFile, $txt);
+        // fclose($gitFile);
 
         //Create composer.json
-        $composer = fopen($_SERVER["DOCUMENT_ROOT"]."/composer.json", "a+");
-        $txt = '{"require": {"phpmailer/phpmailer": "^7.0.0"}}';
-        fwrite($composer, $txt);
-        fclose($composer);
+        // $composer = fopen($_SERVER["DOCUMENT_ROOT"]."/composer.json", "a+");
+        // $txt = '{"require": {"phpmailer/phpmailer": "^7.0.0"}}';
+        // fwrite($composer, $txt);
+        // fclose($composer);
 
         // Install composer dependencies
-        exec("composer update");
+        // exec("composer update");
 
         if($isJson) {
             $auth->jsonResponse([
@@ -257,7 +257,8 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 <h1>Setup completed</h1>
                 <p>
                     Secure authentication is almost set up on this server. 
-                    Please run "composer update" in the terminal of the server to install the required dependencies. After that, please test if the application is capable of sending emails through the specified SMTP server by running the <a href="emailTest.php">Auth/emailTest.php</a> script. Please see the documentation for further use instructions.
+                    Please run "composer update" in the terminal of the server to install the required dependencies. After that, please test if the application is capable of sending emails through the specified SMTP server by running the <a href="emailTest.php">Auth/emailTest.php</a> script. 
+                    Please see the documentation for further use instructions or test the basic functionality with the <a href="/examples/SinglePageApp/">example application</a>.
                 </p>
                 </div>
             </body>

@@ -48,6 +48,17 @@ h1{
     text-align: center;
 }
 
+button.togglePwd{
+  width: 2em;
+  background-color: transparent;
+  border: none;
+  color:darkblue;
+}
+
+button.togglePwd:hover{
+  background-color: rgba(9, 0, 130, 0.2);
+}
+
 /* HTML: <div class="loader"></div> */
 /* Source: https://css-loaders.com/dots/ */
 .loader {

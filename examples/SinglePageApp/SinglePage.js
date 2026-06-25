@@ -32,6 +32,18 @@ let showPage = (pageId) => {
 }
 
 
+let togglePassword = (arr) => {
+    for(var i=0; i<arr.length; i++){
+        var inp = getEl(arr[i]);
+        if(inp.type==="password"){
+            inp.type="text";
+        } else {
+            inp.type="password";
+        }
+    }
+}
+
+
 // Global variables for password reset
 let resetAccount = null;
 let resetToken = null;

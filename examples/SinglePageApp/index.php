@@ -22,11 +22,13 @@
                 <label>Email address</label>
                 <input type="email" id="eml" onkeyup="validateInput()"/><br/>
                 <label>Password</label>
-                <input type="password" id="pwd1" onkeyup="validateInput()"/><br/>
+                <input type="password" id="pwd1" onkeyup="validateInput()"/>
+                <button type="button" class="togglePwd" onclick="togglePassword(['pwd1','pwd2']);">&#128065;</button>
                 <label>Repeat password</label>
                 <input type="password" id="pwd2" onkeyup="validateInput()"/><br/>
                 <label></label>
                 <button type="button" id="button-sign-up" onclick="signUp();">Sign up</button><br/>
+                <label></label>
                 <span class ="errorMsg" id="sign-up-message"></span>
             </div>
         </div>
@@ -48,13 +50,15 @@
                 <label>User name</label>
                 <input type="text" id="usr" /><br/>
                 <label>Password</label>
-                <input type="password" id="psw" /><br/>
+                <input type="password" id="psw" />
+                <button type="button" class="togglePwd" onclick="togglePassword(['psw']);">&#128065;</button><br/>
                 <label></label>
                 <button type="button" onclick="signIn();">Sign in</button> 
                 <label></label>
                 <button type="button" onclick="showPage('page-sign-up');">Sign up</button><br/>
                 <label></label>
                 <button type="button" onclick="showPage('page-password-forgot');" style="margin-top: 10px; background: none; border: none; color: #007bff; cursor: pointer; text-decoration: underline;">Forgot password?</button><br/>
+                <label></label>
                 <span class ="errorMsg" id="sign-in-message"></span>
             </div>
         </div>
@@ -69,7 +73,9 @@
                 <input type="text" id="forgot-username" /><br/>
                 <label></label>
                 <button type="button" id="button-password-forgot" onclick="passwordForgot();">Send Reset Link</button><br/>
+                <label></label>
                 <button type="button" onclick="showPage('page-sign-in');" style="margin-top: 10px; background: none; border: none; color: #666; cursor: pointer;">Back to Sign In</button><br/>
+                <label></label>
                 <span class ="errorMsg" id="password-forgot-message"></span>
             </div>
         </div>
@@ -80,12 +86,13 @@
             <h1>Reset Password</h1>
             <div id="password-reset-form">
                 <label>New Password</label>
-                <input type="password" id="reset-pwd1" onkeyup="validatePasswordReset()"/><br/>
+                <input type="password" id="reset-pwd1" onkeyup="validatePasswordReset()"/>
+                <button type="button" class="togglePwd" onclick="togglePassword(['reset-pwd1','reset-pwd2']);">&#128065;</button>
                 <label>Confirm New Password</label>
                 <input type="password" id="reset-pwd2" onkeyup="validatePasswordReset()"/><br/>
-                <input type="button" onclick="togglePasswordVisibility()" value="👁️" title="Show password"/><br/>
                 <label></label>
                 <button type="button" id="button-password-reset" onclick="passwordReset();" disabled>Reset Password</button><br/>
+                <label></label>
                 <span class ="errorMsg" id="password-reset-message"></span>
             </div>
         </div>
@@ -122,8 +129,9 @@
             <label></label>
             <button type="button" onclick="showSecretData();">Show secret data</button>
             <label></label>
-            <button type="button" onclick="signOut();">Sign out</button><br/>
-            <div id="secret-content"></div>
+            <button type="button" onclick="signOut();">Sign out</button><br/><br/>
+            <label></label>
+            <div id="secret-content" style="display:inline-block;"></div>
         </div>
 
         <!-------------- Loading page ---------------->
