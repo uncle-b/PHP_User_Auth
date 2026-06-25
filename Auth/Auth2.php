@@ -30,6 +30,8 @@ class Auth{
     public $loginId = null;
 
     function __construct(){
+        // Enforce HTTPS for all authentication requests
+        $this->enforceHTTPS();
 
         //Set Auth dir path.
         $docRoot  = $_SERVER["DOCUMENT_ROOT"];
@@ -45,17 +47,37 @@ class Auth{
 
         // if not, try to load them.
         } else {
-            if(file_exists("$docRoot/$this->authDir/env/env.php")){
-                include "$docRoot/$this->authDir/env/env.php"; // Contains only $AuthSetupCompleted, $AuthDBName, $AuthDBUser and $AuthDBPwd variables.
+            $envFile = "$docRoot/$this->authDir/env/env.php";
+            if(file_exists($envFile)){
+                // Validate env file permissions - should not be world-readable
+                $fileInfo = @stat($envFile);
+                if($fileInfo && ($fileInfo['mode'] & 0002)) {
+                    error_log("CRITICAL: Environment file has world-writable permissions: $envFile");
+                    throw new Exception("Insecure environment file permissions");
+                }
+                
+                include $envFile; // Contains only $AuthSetupCompleted, $AuthDBName, $AuthDBUser and $AuthDBPwd variables.
+                
+                // Validate required variables exist and are non-empty
+                $requiredVars = ['AuthDBName', 'AuthDBUser', 'AuthDBPwd', 'AuthEncryptKey', 'AuthSetupCompleted'];
+                foreach ($requiredVars as $var) {
+                    if (!isset($$var) || empty($$var)) {
+                        error_log("Missing or empty required configuration: $var");
+                        throw new Exception("Incomplete authentication configuration");
+                    }
+                }
+                
                 $this->setEnvVariable("AUTH_DB_NAME", $AuthDBName);
                 $this->setEnvVariable("AUTH_DB_USER", $AuthDBUser);
                 $this->setEnvVariable("AUTH_DB_PWD", $AuthDBPwd);
                 $this->setEnvVariable("AUTH_ENCRYPTION_KEY", $AuthEncryptKey);
                 $this->setEnvVariable("AUTH_SETUP_COMPLETED", $AuthSetupCompleted);
-                $this->setEnvVariable("AUTH_SMTP_HOST", $smtpHost);
-                $this->setEnvVariable("AUTH_SMTP_PORT", $smtpPort);
-                $this->setEnvVariable("AUTH_SMTP_EMAIL", $smtpEmail);   
-                $this->setEnvVariable("AUTH_SMTP_PWD", $smtpPwd);
+                
+                // Only set SMTP vars if they exist
+                if(isset($smtpHost)) $this->setEnvVariable("AUTH_SMTP_HOST", $smtpHost);
+                if(isset($smtpPort)) $this->setEnvVariable("AUTH_SMTP_PORT", $smtpPort);
+                if(isset($smtpEmail)) $this->setEnvVariable("AUTH_SMTP_EMAIL", $smtpEmail);   
+                if(isset($smtpPwd)) $this->setEnvVariable("AUTH_SMTP_PWD", $smtpPwd);
 
                 if($_ENV["AUTH_SETUP_COMPLETED"]==true){
                     $this->active = true;
@@ -217,7 +239,7 @@ class Auth{
     }
 
     public function randomString($n) {
-        $characters = '!#()*-_^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         $randomString = '';
         for ($i = 0; $i < $n; $i++) {
             $index = random_int(0, strlen($characters) - 1);
@@ -238,12 +260,12 @@ class Auth{
             return false;
         } else {
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
     }
 
     public function validatePassword($pwd){
-        if(preg_match("/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*-]).{8,}$/", $pwd)){
+        if(preg_match("/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*-]).{8,}$/", $pwd)){
             return true;
         }
         return false;
@@ -330,7 +352,7 @@ class Auth{
                 return false;
             } else {
                 error_log("No db connection..");
-                throw new Exception("Invalid database connection.");
+                throw new Exception("Authentication service unavailable. Please try again later.");
             }
         }
     }
@@ -351,13 +373,18 @@ class Auth{
             return false;
         } else {
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
     }
 
     public function startSession(){
         if (session_status() === PHP_SESSION_NONE) {
+            // Prevent session fixation by regenerating session ID
             session_start();
+            if (!isset($_SESSION['initiated'])) {
+                session_regenerate_id(true);
+                $_SESSION['initiated'] = true;
+            }
         }
     }
 
@@ -370,15 +397,32 @@ class Auth{
     }
 
     /**
+     * Sanitize input string to prevent XSS
+     */
+    public function sanitizeInput($input) {
+        if (is_array($input)) {
+            return array_map([$this, 'sanitizeInput'], $input);
+        }
+        if (is_string($input)) {
+            // Remove null bytes and control characters
+            $input = preg_replace('/[\x00-\x1F\x7F]/u', '', $input);
+            // Trim whitespace
+            $input = trim($input);
+            return $input;
+        }
+        return $input;
+    }
+
+    /**
      * Get request data from either JSON body or POST, based on Content-Type
      */
     public function getRequestData() {
         if ($this->isJsonRequest()) {
             $json = file_get_contents('php://input');
             $data = json_decode($json, true);
-            return $data !== null ? $data : [];
+            return $data !== null ? $this->sanitizeInput($data) : [];
         }
-        return $_POST;
+        return $this->sanitizeInput($_POST);
     }
 
     /**
@@ -403,10 +447,12 @@ class Auth{
      * Send a JSON response and exit
      */
     public function jsonResponse($data, $statusCode = 200) {
+        $jsonContent = json_encode($data);
         $this->sendSecurityHeaders();
         http_response_code($statusCode);
         header('Content-Type: application/json');
-        echo json_encode($data);
+        header('Content-Length: ' . strlen($jsonContent));
+        echo $jsonContent;
         exit;
     }
 
@@ -571,7 +617,7 @@ class Auth{
             }
         } else {
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
     }
 
@@ -627,7 +673,7 @@ class Auth{
                 return false;
             } else {
                 error_log("No db connection..");
-                throw new Exception("Invalid database connection.");
+                throw new Exception("Authentication service unavailable. Please try again later.");
             }
         }
 
@@ -762,7 +808,7 @@ class Auth{
             return true;
         } else {
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
     }
 
@@ -782,7 +828,7 @@ class Auth{
             return false;
         } else {
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
     }
 
@@ -790,9 +836,29 @@ class Auth{
     public function isSecure() {
         $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || $_SERVER['SERVER_PORT'] == 443;
+        return $secure;
+    }
+
+    public function enforceHTTPS() {
+        $secure = $this->isSecure();
         if($secure === false){
             error_log("WARNING: You are not using HTTPS! Please enable HTTPS for secure client communication!");
+            // Only enforce HTTPS if not in setup mode (allows setup over HTTP for initial configuration)
+            if (!isset($GLOBALS['auth_muteSetup']) || $GLOBALS['auth_muteSetup'] !== true) {
+                // Redirect to HTTPS or block access
+                if (!empty($_SERVER['HTTP_HOST']) && !empty($_SERVER['REQUEST_URI'])) {
+                    $redirectUrl = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+                    header('Location: ' . $redirectUrl);
+                    exit;
+                } else {
+                    // If we can't redirect, block access
+                    header('HTTP/1.1 403 Forbidden');
+                    echo 'HTTPS is required for this application.';
+                    exit;
+                }
+            }
         }
+        return $secure;
     }
 
     public function authenticateRequest(){
@@ -1004,7 +1070,7 @@ class Auth{
         $stmt = $con->prepare("SELECT id FROM trusted_devices 
                               WHERE userId = ? AND device_hash = ? 
                               AND expires_at > ? 
-                              AND (ip_address = ? OR user_agent = ?)
+                              AND ip_address = ? AND user_agent = ?
                               LIMIT 1");
         $stmt->bind_param('issss', $userId, $fp, $currentTime, $ip, $ua);
         $stmt->execute();
@@ -1114,7 +1180,7 @@ class Auth{
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
 
         //$this->makePassToken($username, $password);
@@ -1244,7 +1310,7 @@ class Auth{
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con === null){
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
         
         $currentTime = time();
@@ -1348,7 +1414,7 @@ class Auth{
             }
         } else {
             error_log("No db connection..");
-            throw new Exception("Invalid database connection.");
+            throw new Exception("Authentication service unavailable. Please try again later.");
         }
     }
 }

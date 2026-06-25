@@ -18,32 +18,17 @@ class DB{
 		mysqli_close($connection);
 	}
 
-	public static function query($connection, $query){
-		try {
-			$result = mysqli_query($connection, $query);
-		} catch(Exception $e) {
-  			error_log(mysqli_error($connection));
-			$result = false;
-		}
-		return $result;
+	public static function query($connection, $query, $params = []){
+		// Security: Disable raw query execution to prevent SQL injection
+		// All queries should use prepared statements directly
+		error_log("DEPRECATED: DB::query() with raw SQL is disabled. Use prepared statements directly.");
+		return false;
 	}
 
-	public static function singleResultQuery($connection, $query, $column){
-		$ret = "";		
-		if($connection!==null){
-			$result = mysqli_query($connection, $query);
-			if(mysqli_num_rows($result)>0){	
-				error_log("checkpoint 1");
-				$row = mysqli_fetch_array($result);
-				$ret = $row[$column];
-				return $ret;
-			} else {
-				error_log("checkpoint 2");
-				return false;
-			}
-			error_log("checkpoint 3");
-			return $ret;
-		}
+	public static function singleResultQuery($connection, $query, $column, $params = []){
+		// Security: Disable raw query execution to prevent SQL injection
+		error_log("DEPRECATED: DB::singleResultQuery() with raw SQL is disabled. Use prepared statements directly.");
+		return false;
 	}
 
 	public static function escapeString($string){
