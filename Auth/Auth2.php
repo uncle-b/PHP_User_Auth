@@ -17,6 +17,7 @@ if(file_exists($_SERVER["DOCUMENT_ROOT"]."/vendor/autoload.php")){
   }
 }
 
+include "enforceHTTPS.php";
 include "DB.php";
 include "JWT.php";
 
