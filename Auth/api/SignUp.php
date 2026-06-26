@@ -6,7 +6,7 @@ include "../Auth2.php";
 $auth->startSession();
 $auth->sendSecurityHeaders();
 
-$JSON = json_decode(file_get_contents('php://input'), true);
+$JSON = $auth->getRequestData();
 
 $usr = isset($JSON['userName']) ? $JSON['userName'] : '';
 $pwd = isset($JSON['password']) ? $JSON['password'] : '';

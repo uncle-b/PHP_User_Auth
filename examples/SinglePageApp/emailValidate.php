@@ -1,8 +1,18 @@
 <?php
 include "../../Auth/Auth2.php";
 
-$account = $_GET["account"];
-$key = $_GET["key"];
+$account = $_GET["account"] ?? null;
+$key = $_GET["key"] ?? null;
+
+if ($account && $key) {
+    // Clear verification code immediately after use (one-time use)
+    $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
+    if($con) {
+        $stmt = $con->prepare("UPDATE `accounts` SET `verificationCode`=0 WHERE `userId`=? AND `verificationCode`=?");
+        $stmt->bind_param('ii', $account, $key);
+        $stmt->execute();
+    }
+}
 
 $result = $auth->verifyAccount($account, $key);
 

@@ -2,7 +2,8 @@
 header('Content-Type: application/json');
 include "../Auth2.php";
 
-$JSON = json_decode(file_get_contents('php://input'), true);
+$JSON = $auth->getRequestData();
+
 $redirectUrl = isset($JSON["redirectUrl"]) ? $JSON["redirectUrl"] : "/";
 $onAllAccounts = isset($JSON["onAllAccounts"]) ? $JSON["onAllAccounts"] : false;
 

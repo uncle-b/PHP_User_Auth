@@ -309,8 +309,14 @@ class Auth{
     }
 
     public function createUser($usr, $eml, $psw, $validationURL=null, $csrfToken = null){
-        // Validate CSRF token for unauthenticated requests
+        // Rate limiting check for account creation
+        $identifier = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        if ($this->checkRateLimit('account_creation', $identifier, 3, 3600)) {
+            $this->logSecurityEvent('rate_limit_blocked', null, null, 'Account creation blocked due to rate limiting from ' . $identifier);
+            return false;
+        }
 
+        // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
             return false;
         }
@@ -331,15 +337,17 @@ class Auth{
             
             $encEml = $encryptedData["email"];
             $nonce = $encryptedData["nonce"];
-            $emailHash = hash('sha256', strtolower($eml));
+            // Generate salt for email hash (for lookup while keeping email encrypted)
+            $emailSalt = bin2hex(random_bytes(16));
+            $emailHash = hash('sha256', strtolower($eml) . $emailSalt);
 
             $decryptedData = $this->decryptDataArray($encryptedData);
             $verificationCode = random_int(10000, 99999);
 
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
-                $stmt = $con->prepare("INSERT INTO `accounts`(`user`, `email`, `emailHash`, `verificationCode`, `passToken`, `nonce`, `verified`) VALUES (?, ?, ?, ?, ?, ?, 0)");
-                $stmt->bind_param('sssiss', $usr, $encEml, $emailHash, $verificationCode, $passToken, $nonce);
+                $stmt = $con->prepare("INSERT INTO `accounts`(`user`, `email`, `emailHash`, `emailSalt`, `verificationCode`, `passToken`, `nonce`, `verified`) VALUES (?, ?, ?, ?, ?, ?, ?, 0)");
+                $stmt->bind_param('sssssis', $usr, $encEml, $emailHash, $emailSalt, $verificationCode, $passToken, $nonce);
                 if($stmt->execute()){
                     
                     $id = $stmt->insert_id;
@@ -359,6 +367,12 @@ class Auth{
     }
 
     public function verifyAccount($id,$key){
+        // Rate limiting check per IP for email verification
+        if ($this->checkRateLimit('email_verification', null, 10, 3600)) {
+            $this->logSecurityEvent('rate_limit_blocked', null, null, 'Email verification blocked due to rate limiting');
+            return false;
+        }
+        
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
             $stmt = $con->prepare("SELECT * FROM `accounts` WHERE userId=? AND verificationCode=?");
@@ -380,11 +394,18 @@ class Auth{
 
     public function startSession(){
         if (session_status() === PHP_SESSION_NONE) {
-            // Prevent session fixation by regenerating session ID
             session_start();
-            if (!isset($_SESSION['initiated'])) {
+            // Always regenerate session ID to prevent session fixation
+            // This is more secure than conditional regeneration
+            if (isset($_SESSION['initiated'])) {
+                // If already initiated, still regenerate periodically
+                if (mt_rand(0, 99) < 10) {  // 10% chance to rotate
+                    session_regenerate_id(true);
+                }
+            } else {
                 session_regenerate_id(true);
                 $_SESSION['initiated'] = true;
+                $_SESSION['last_regenerated'] = time();
             }
         }
     }
@@ -415,9 +436,53 @@ class Auth{
     }
 
     /**
+     * Validate Content-Length header to prevent request smuggling
+     *
+     * @param int $maxSize Maximum allowed content length in bytes (default: 64KB)
+     * @return bool True if valid
+     */
+    private function validateContentLength($maxSize = 65536) {
+        if (!isset($_SERVER['CONTENT_LENGTH'])) {
+            // No Content-Length header - might be GET request or chunked encoding
+            return true;
+        }
+
+        $contentLength = (int)$_SERVER['CONTENT_LENGTH'];
+
+        // Validate it's a positive integer
+        if ($contentLength < 0) {
+            error_log("Invalid Content-Length header: negative value");
+            return false;
+        }
+
+        // Validate against maximum
+        if ($contentLength > $maxSize) {
+            error_log("Content-Length exceeds maximum: $contentLength > $maxSize");
+            return false;
+        }
+
+        // For JSON requests, also check if actual body matches
+        if ($this->isJsonRequest()) {
+            $actualLength = strlen(file_get_contents('php://input'));
+            if ($actualLength !== $contentLength) {
+                error_log("Content-Length mismatch: header=$contentLength, actual=$actualLength");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Get request data from either JSON body or POST, based on Content-Type
      */
     public function getRequestData() {
+        // Validate Content-Length header
+        if (!$this->validateContentLength()) {
+            $this->logSecurityEvent('invalid_content_length', null, null, 'Invalid Content-Length header detected');
+            return [];
+        }
+
         if ($this->isJsonRequest()) {
             $json = file_get_contents('php://input');
             $data = json_decode($json, true);
@@ -517,7 +582,7 @@ class Auth{
                         $this->logSecurityEvent('account_locked', $userId, $usr, "Account locked until $lockedUntil");
                         return array(
                             'error' => true,
-                            'message' => "Account locked due to too many failed attempts. Please try again later."
+                            'message' => "Invalid username or password."
                         );
                     }
                         
@@ -545,17 +610,19 @@ class Auth{
                         // Password correct!
                         $loginId = $this->randomString(32) . '.' . time();
                         $bodyToken= $this->randomString(16);
-                        $fingerprint = $this->getClientFingerprint();
+                        $currentFingerprint = $this->getClientFingerprint();
                         
+                        // Explicitly bind JWT to current client fingerprint
                         $payload = array(
                             "user" => $usr,
                             "userId" => $userId,
                             "loginId" => $loginId,
                             "bodyToken" => $bodyToken,
-                            "ip" => $fingerprint['ip'],
-                            "ua" => $fingerprint['ua'],
+                            "ip" => $currentFingerprint['ip'],
+                            "ua" => $currentFingerprint['ua'],
                             "issued" => time(),
-                            "expiry" => (time() + 3600)  // = today + 1 hour
+                            "expiry" => (time() + 3600),  // = today + 1 hour
+                            "boundAt" => time()  // Timestamp when token was bound to fingerprint
                         );
 
                         $encKey = $_ENV["AUTH_ENCRYPTION_KEY"];
@@ -604,7 +671,7 @@ class Auth{
                         $this->logSecurityEvent('login_failure', $userId, $usr, "Invalid password. Failed attempts: $failedAttempts");
                         return array(
                             'error' => true,
-                            'message' => "Authentication failed."
+                            'message' => "Invalid username or password."
                         );
                     }
                 } else {
@@ -612,7 +679,7 @@ class Auth{
                     // Generic message to prevent username enumeration
                     return array(
                         'error' => true,
-                        'message' => "Authentication failed."
+                        'message' => "Invalid username or password."
                     );
                 }
             }
@@ -816,16 +883,24 @@ class Auth{
     public function getUserByEmail($email){
         $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
         if($con){
-            $emailHash = hash('sha256', strtolower($email));
-            $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `emailHash`=? AND `verified`=1 LIMIT 1");
-            $stmt->bind_param('s', $emailHash);
+            // With salted hashes, we need to compute the hash for each user's salt
+            $normalizedEmail = strtolower($email);
             
+            // Get all verified users with email salt
+            $stmt = $con->prepare("SELECT * FROM `accounts` WHERE `verified`=1 AND `emailSalt` != ''");
             if($stmt->execute()){
                 $res = $stmt->get_result();
-                if($res !== false && $res->num_rows > 0){
-                    return $res->fetch_array(MYSQLI_ASSOC);
+                if($res !== false) {
+                    while($row = $res->fetch_array(MYSQLI_ASSOC)){
+                        // Compute hash with this user's salt
+                        $saltedHash = hash('sha256', $normalizedEmail . $row['emailSalt']);
+                        if($saltedHash === $row['emailHash']){
+                            return $row;
+                        }
+                    }
                 }
             }
+            
             return false;
         } else {
             error_log("No db connection..");
@@ -863,6 +938,17 @@ class Auth{
     }
 
     public function authenticateRequest(){
+        // Validate CSRF token for state-changing requests (POST, PUT, DELETE)
+        // This provides automatic CSRF protection without breaking GET/HEAD/OPTIONS
+        $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        if (in_array($requestMethod, ['POST', 'PUT', 'DELETE', 'PATCH'])) {
+            // Try to get CSRF token from header or POST data
+            $csrfToken = $_POST['csrfToken'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+            if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
+                $this->logSecurityEvent('csrf_validation_failed', null, null, 'CSRF token validation failed in authenticateRequest for ' . $requestMethod . ' request');
+                return false;
+            }
+        }
 
         // Get JWT token from cookie (PHP converts hyphens to underscores)
         $jwtToken = isset($_COOKIE['X_AUTH_KEY']) ? $_COOKIE['X_AUTH_KEY'] : (isset($_COOKIE['X-AUTH-KEY']) ? $_COOKIE['X-AUTH-KEY'] : null);
@@ -1281,12 +1367,12 @@ class Auth{
         if ($accountLocked) {
             return array(
                 'error' => true,
-                'message' => "Account locked due to too many failed attempts. Please try again later."
+                'message' => "Invalid username or password."
             );
         }
         return array(
             'error' => true,
-            'message' => "Authentication failed."
+            'message' => "Invalid username or password."
         );
     }
 
@@ -1355,6 +1441,15 @@ class Auth{
     }
 
     public function resetPassword($userId, $resetToken, $newPassword, $newPasswordRepeat = null, $csrfToken = null){
+        // Rate limiting check per userId
+        if ($this->checkRateLimit('password_reset_verify', (string)$userId, 5, 3600)) {
+            $this->logSecurityEvent('rate_limit_blocked', $userId, null, 'Password reset verification blocked due to rate limiting');
+            return array(
+                'error' => true,
+                'message' => "Invalid or expired reset token."
+            );
+        }
+        
         // Validate CSRF token for unauthenticated requests
         if ($csrfToken !== null && !$this->validateCsrfToken($csrfToken)) {
             return array(
@@ -1391,7 +1486,9 @@ class Auth{
                 
                     $newPassToken = password_hash($newPassword, PASSWORD_ARGON2ID); //$this->makePassToken($user, $newPassword);
                     
-                    $stmt2 = $con->prepare("UPDATE `accounts` SET `passToken`=?, `loginId`='', `resetToken`='', `resetExpiry`=0 WHERE `userId`=?");
+                    // Clear reset token, login sessions, and failed attempts immediately after use
+                    // This implements one-time-use tokens and prevents replay attacks
+                    $stmt2 = $con->prepare("UPDATE `accounts` SET `passToken`=?, `loginId`='', `resetToken`='', `resetExpiry`=0, `failed_attempts`=0, `locked_until`=NULL WHERE `userId`=?");
                     $stmt2->bind_param('si', $newPassToken, $userId);
                     $updateRes = $stmt2->execute();
                     

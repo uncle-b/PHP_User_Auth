@@ -1,6 +1,7 @@
 function validatePassWord(element){
     let pwd = element.value;
-    const regex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*-]).{8,}$/
+    // Match server-side validation: requires lowercase, uppercase, digit, special char, min 8 chars
+    const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*-]).{8,}$/
     return regex.test(pwd);
 }
 
@@ -9,14 +10,15 @@ function validateEmail(element){
         return element.checkValidity();
     }
 
-    //Non html5 fallback
+    //Non html5 fallback - more comprehensive regex
     const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return regex.test(email);
+    return regex.test(element.value);
 }
 
 function validateUserName(element){
     let usr = element.value;
-    const regex = /^[a-z0-9]*$/gi
+    // Match reasonable username requirements: alphanumeric and common special chars, 3-50 chars
+    const regex = /^[a-zA-Z0-9!#$%&'*+=?^_`{|}~-]{3,50}$/;
     return regex.test(usr);
 }
 

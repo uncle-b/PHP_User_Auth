@@ -5,7 +5,7 @@ include "../Auth2.php";
 // Start session for CSRF protection
 $auth->startSession();
 
-$JSON = json_decode(file_get_contents('php://input'), true);
+$JSON = $auth->getRequestData();
 
 $userName = isset($JSON['userName']) ? $JSON['userName'] : '';
 $password = isset($JSON['password']) ? $JSON['password'] : '';

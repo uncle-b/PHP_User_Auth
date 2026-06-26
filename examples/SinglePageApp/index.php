@@ -7,9 +7,6 @@
         <script src="/Auth/js/fetch.js"></script>
     </head>
     <body>
-        <div id="top-bar">
-
-        </div>
 
 
         <!-------------- Sign Up Page ---------------->
@@ -18,14 +15,14 @@
             <h1>Sign up</h1>
             <div id="sign-up-form">
                 <label>User name</label>
-                <input type="text" id="signup-usr" onkeyup="validateInput()"/><br/>
+                <input type="text" id="signup-usr" onkeyup="validateInput()" maxlength="50"/><br/>
                 <label>Email address</label>
-                <input type="email" id="eml" onkeyup="validateInput()"/><br/>
+                <input type="email" id="eml" onkeyup="validateInput()" maxlength="254"/><br/>
                 <label>Password</label>
-                <input type="password" id="pwd1" onkeyup="validateInput()"/>
+                <input type="password" id="pwd1" onkeyup="validateInput()" maxlength="128"/>
                 <button type="button" class="togglePwd" onclick="togglePassword(['pwd1','pwd2']);">&#128065;</button>
                 <label>Repeat password</label>
-                <input type="password" id="pwd2" onkeyup="validateInput()"/><br/>
+                <input type="password" id="pwd2" onkeyup="validateInput()" maxlength="128"/><br/>
                 <label></label>
                 <button type="button" id="button-sign-up" onclick="signUp();">Sign up</button><br/>
                 <label></label>
@@ -48,9 +45,9 @@
             <h1>Sign In</h1>
             <div id="sign-in-form">
                 <label>User name</label>
-                <input type="text" id="usr" /><br/>
+                <input type="text" id="usr" maxlength="50"/><br/>
                 <label>Password</label>
-                <input type="password" id="psw" />
+                <input type="password" id="psw" maxlength="128"/>
                 <button type="button" class="togglePwd" onclick="togglePassword(['psw']);">&#128065;</button><br/>
                 <label></label>
                 <button type="button" onclick="signIn();">Sign in</button> 
@@ -70,7 +67,7 @@
             <div id="password-forgot-form">
                 <p>Enter your username and we will send a password reset link to your email address.</p>
                 <label>User name</label>
-                <input type="text" id="forgot-username" /><br/>
+                <input type="text" id="forgot-username" maxlength="50"/><br/>
                 <label></label>
                 <button type="button" id="button-password-forgot" onclick="passwordForgot();">Send Reset Link</button><br/>
                 <label></label>
@@ -86,10 +83,10 @@
             <h1>Reset Password</h1>
             <div id="password-reset-form">
                 <label>New Password</label>
-                <input type="password" id="reset-pwd1" onkeyup="validatePasswordReset()"/>
+                <input type="password" id="reset-pwd1" onkeyup="validatePasswordReset()" maxlength="128"/>
                 <button type="button" class="togglePwd" onclick="togglePassword(['reset-pwd1','reset-pwd2']);">&#128065;</button>
                 <label>Confirm New Password</label>
-                <input type="password" id="reset-pwd2" onkeyup="validatePasswordReset()"/><br/>
+                <input type="password" id="reset-pwd2" onkeyup="validatePasswordReset()" maxlength="128"/><br/>
                 <label></label>
                 <button type="button" id="button-password-reset" onclick="passwordReset();" disabled>Reset Password</button><br/>
                 <label></label>

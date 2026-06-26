@@ -142,6 +142,7 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 user TINYTEXT NOT NULL,
                 email TINYTEXT NOT NULL,
                 emailHash CHAR(64) NOT NULL,
+                emailSalt CHAR(32) NOT NULL DEFAULT '',
                 verificationCode MEDIUMINT(5) DEFAULT 0,
                 passToken TINYTEXT,
                 nonce TINYTEXT NOT NULL,
@@ -153,7 +154,9 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 verified BOOLEAN DEFAULT FALSE,
                 failed_attempts INT DEFAULT 0,
                 locked_until TIMESTAMP NULL,
-                modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX (emailHash),
+                INDEX (userId)
                 )";
         $conn->exec($q);
 
