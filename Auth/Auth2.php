@@ -34,7 +34,7 @@ class Auth{
 
     function __construct(){
         // Enforce HTTPS for all authentication requests
-        // $this->enforceHTTPS();
+        $this->enforceHTTPS();
 
         //Set Auth dir path.
         $docRoot  = $_SERVER["DOCUMENT_ROOT"];
@@ -353,7 +353,7 @@ class Auth{
                 if($stmt->execute()){
                     
                     $id = $stmt->insert_id;
-                    $validationURL.="?account=$id&key=$verificationCode";
+                    $validationURL.="?account=$id&key=$verificationCode&method=emlCheck";
                     $emailText = "";
                     $subject = "Subject";
                     include "emails/emailValidation.php";
@@ -857,7 +857,7 @@ class Auth{
                     $updateRes = $stmt2->execute();
                     
                     if($updateRes !== false){
-                        $resetLink = $resetURL . "?account=$userId&token=$resetToken";
+                        $resetLink = $resetURL . "?account=$userId&token=$resetToken&method=pwdReset";
                         $subject = "Password Reset Request";
                         
                         $message = "";
@@ -1533,18 +1533,24 @@ if($auth->active === false){
 
     $docRoot  = $_SERVER["DOCUMENT_ROOT"];
     $included_files = get_included_files();
-    $pth = explode("/", $included_files[1]);
-    array_pop($pth);
-    $dir = str_replace($docRoot, "", join("/",$pth));
 
-    error_log($dir."/setupScript.php");
+    $topLevelPth = explode("/", $included_files[0]);
+    $reqFile = $topLevelPth[count($topLevelPth)-1];
+    
+    // Avoid eternal loop when included from setupScript.php
+    if($reqFile !== "setupScript.php"){
+        $pth = explode("/", $included_files[1]);
+        array_pop($pth);
+        $dir = str_replace($docRoot, "", join("/",$pth));
 
-    if (!empty($_SERVER['HTTP_HOST']) && !empty($_SERVER['REQUEST_URI'])) {
-        $redirectUrl = 'https://' . $_SERVER['HTTP_HOST'] . $dir."/setupScript.php";
-        header('Location: ' . $redirectUrl);
+        error_log($dir."/setupScript.php");
+
+        if (!empty($_SERVER['HTTP_HOST']) && !empty($_SERVER['REQUEST_URI'])) {
+            $redirectUrl = $dir."/setupScript.php";
+            header('Location: ' . $redirectUrl);
+        }
+
+        exit;
     }
-
-    // header("Location:".$dir."/setupScript.php");
-    exit;
 }
 

@@ -47,20 +47,41 @@ let togglePassword = (arr) => {
 // Global variables for password reset
 let resetAccount = null;
 let resetToken = null;
+let validateAccount = null;
+let validationKey = null;
 
 // Check URL parameters on page load for password reset
 function checkUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);
     const account = urlParams.get('account');
     const token = urlParams.get('token');
-    
-    if (account && token) {
-        resetAccount = account;
-        resetToken = token;
-        // Clear the URL parameters to avoid showing them in the address bar
-        window.history.replaceState({}, document.title, window.location.pathname);
-        // Show the password reset page
-        showPage('page-password-reset');
+    const key = urlParams.get('key');
+    const method = urlParams.get('method');
+
+    switch(method){
+        case "pwdReset":
+            if(account && token) {
+                resetAccount = account;
+                resetToken = token;
+                // Clear the URL parameters to avoid showing them in the address bar
+                window.history.replaceState({}, document.title, window.location.pathname);
+                // Show the password reset page
+                showPage('page-password-reset');
+            }
+            break;
+        
+        case "emlCheck":
+            if(account && key) {
+                validateAccount = account;
+                validateKey = key;
+                // Clear the URL parameters to avoid showing them in the address bar
+                window.history.replaceState({}, document.title, window.location.pathname);
+                // Show the password reset page
+                loaderMsg("Validating your email address...");
+                showPage('page-loader');
+                emailValidate();
+            }
+            break;
     }
 }
 
@@ -74,7 +95,7 @@ let signUp = async () => {
         userName: usr.value,
         password: pwd.value,
         email: eml.value,
-        validationUrl: window.location.hostname+"/examples/SinglePageApp/emailValidate.php"
+        validationUrl: window.location.hostname+"/examples/SinglePageApp"
     }
 
     if (csrfToken){
@@ -337,6 +358,36 @@ let passwordReset = async () => {
     }
 }
 
+// Email validate function
+let emailValidate = async () => {
+
+    let req = {
+        account: validateAccount,
+        key: validateKey,
+    };
+    
+    if (csrfToken) {
+        req.csrfToken = csrfToken;
+    }
+
+    loaderMsg("Validating your email address.");
+    showPage("page-loader");
+
+    let url = "/Auth/api/emailValidate.php";
+    let method = "POST";
+    let res = await authFetchJSON(url, req, bodyToken);
+
+    if(res.error === false) {
+        // Success - reset the global variables and show success page
+        validateAccount = null;
+        validateKey = null;
+        showPage("page-email-validate-success");
+    } else {
+        // Error
+        showPage("page-email-validate-failed");
+    }
+}
+
 // Toggle password visibility for reset form
 function togglePasswordVisibility() {
     let pwd1 = getEl("reset-pwd1");
@@ -380,39 +431,6 @@ function validatePasswordReset() {
         subm.disabled = false;
     }
 }
-
-
-/*None
-function input(id, clss, type, parent=null){
-
-    let newInput = document.createElement("INPUT");
-        newInput.id = id;
-        newInput.className = clss;
-        newInput.type = type;
-
-    if(parent !== null){
-        parent.appendChild(newInput);
-    }
-
-    return newInput;
-
-}
-
-
-function signInPage(){
-    let contentArea = document.getElementById("content-area");
-    let topBar = document.getElementById("top-bar");
-
-    topBar.innerHTML = "";
-    contentArea.innerHTML = "";
-    
-    let usr = input("usr", "", "text", contentArea);
-    let psw = input("psw", "", "password", contentArea);
-
-
-
-}
-*/
 
 function pageLoader(){
 

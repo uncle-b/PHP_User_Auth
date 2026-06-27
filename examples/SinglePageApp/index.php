@@ -37,7 +37,33 @@
             <div id="sign-up-form">
                 Thank you for signing up. We have sent you an email to verify your email address.
             </div>
+            
         </div>
+
+        <!-------------- Email Validate Success Page ---------------->
+
+        <div class="page" id="page-email-validate-success" style="display:none;">
+            <h1>Email validated</h1>
+            <label></label>
+            <div style="display: inline-block;">
+                Your email address has been validated. You can now sign in.
+            </div>
+            <label></label>
+            <button type="button" onclick="showPage('page-sign-in');">Sign in</button><br/>
+        </div>
+
+        <!-------------- Email Validate Failure Page ---------------->
+
+        <div class="page" id="page-email-validate-failed" style="display:none;">
+            <h1>Email validation failed</h1>
+            <label></label>
+            <div style="display: inline-block;">
+                Sorry, we could not validate your email address.
+            </div>
+            <label></label>
+            <button type="button" onclick="showPage('page-sign-up');">Sign up</button><br/>
+        </div>
+
 
         <!-------------- Sign In Page ---------------->
 
@@ -144,16 +170,6 @@
     <script>
         // Set the start page
         let startPage = "page-sign-in";
-        
-        // Check if this is a password reset link
-        const urlParams = new URLSearchParams(window.location.search);
-        const account = urlParams.get('account');
-        const token = urlParams.get('token');
-        
-        if (account && token) {
-            startPage = "page-password-reset";
-        }
-        
         pageLoader();
         checkUrlParams();
     </script>
