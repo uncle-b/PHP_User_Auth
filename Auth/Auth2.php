@@ -21,6 +21,8 @@ include "enforceHTTPS.php";
 include "DB.php";
 include "JWT.php";
 
+error_log("Auth included");
+
 class Auth{
     
     public $active = false;
@@ -32,7 +34,7 @@ class Auth{
 
     function __construct(){
         // Enforce HTTPS for all authentication requests
-        $this->enforceHTTPS();
+        // $this->enforceHTTPS();
 
         //Set Auth dir path.
         $docRoot  = $_SERVER["DOCUMENT_ROOT"];
@@ -922,6 +924,7 @@ class Auth{
             // Only enforce HTTPS if not in setup mode (allows setup over HTTP for initial configuration)
             if (!isset($GLOBALS['auth_muteSetup']) || $GLOBALS['auth_muteSetup'] !== true) {
                 // Redirect to HTTPS or block access
+                error_log("redirecting");
                 if (!empty($_SERVER['HTTP_HOST']) && !empty($_SERVER['REQUEST_URI'])) {
                     $redirectUrl = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
                     header('Location: ' . $redirectUrl);
@@ -1523,13 +1526,25 @@ class Auth{
 
 $auth = new Auth();
 
-if($auth->active === false && $auth_muteSetup !== true){
+if($auth->active === false){
+
+    error_log("auth->active = false");
+
+
     $docRoot  = $_SERVER["DOCUMENT_ROOT"];
     $included_files = get_included_files();
     $pth = explode("/", $included_files[1]);
     array_pop($pth);
     $dir = str_replace($docRoot, "", join("/",$pth));
-    header("Location:".$dir."/setupScript.php");
+
+    error_log($dir."/setupScript.php");
+
+    if (!empty($_SERVER['HTTP_HOST']) && !empty($_SERVER['REQUEST_URI'])) {
+        $redirectUrl = 'https://' . $_SERVER['HTTP_HOST'] . $dir."/setupScript.php";
+        header('Location: ' . $redirectUrl);
+    }
+
+    // header("Location:".$dir."/setupScript.php");
     exit;
 }
 

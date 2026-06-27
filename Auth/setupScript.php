@@ -1,7 +1,10 @@
 <?php 
 
-$auth_muteSetup = true;
+error_log("setupScript Started");
+
 include "Auth2.php";
+
+error_log("Auth included");
 
 $requestData = $auth->getRequestData();
 $isJson = $auth->isJsonRequest();
@@ -23,6 +26,8 @@ function randomString($n) {
 
 // First check if the secure authentication has already been set up.
 if($auth->active===true){
+    error_log("Checkpoint 1");
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -42,7 +47,7 @@ if($auth->active===true){
 </html>
 <?php
 } else {
-
+error_log("Checkpoint 2");
 // if not, get admin user + password
 if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
 
@@ -103,6 +108,7 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
 </html>
 <?php
 } else {
+    error_log("Checkpoint 3");
     // Start setting up secure authentication with the provided credentials.
     $adminUsr = $requestData["usr"];
     $adminPwd = $requestData["pwd"];
