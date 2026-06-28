@@ -349,7 +349,7 @@ class Auth{
             $con = DB::connect($_ENV["AUTH_DB_USER"], $_ENV["AUTH_DB_PWD"], $_ENV["AUTH_DB_NAME"]);
             if($con){
                 $stmt = $con->prepare("INSERT INTO `accounts`(`user`, `email`, `emailHash`, `emailSalt`, `verificationCode`, `passToken`, `nonce`, `verified`) VALUES (?, ?, ?, ?, ?, ?, ?, 0)");
-                $stmt->bind_param('sssssis', $usr, $encEml, $emailHash, $emailSalt, $verificationCode, $passToken, $nonce);
+                $stmt->bind_param('sssssss', $usr, $encEml, $emailHash, $emailSalt, $verificationCode, $passToken, $nonce);
                 if($stmt->execute()){
                     
                     $id = $stmt->insert_id;
