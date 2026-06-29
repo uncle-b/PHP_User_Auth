@@ -75,11 +75,6 @@ try{
     } else {
         $result = $auth->initiateMFA($userName, $password, $csrfToken, true);
 
-        error_log("Initiating MFA");
-
-
-        error_log(json_encode($result));
-
         if($result['error'] === false && isset($result['token'])){
             // Login complete (trusted device - MFA was skipped, or direct signIn)
             $cookie_name = "X_AUTH_KEY";

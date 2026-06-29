@@ -1,5 +1,9 @@
 # php Auth
-Easy Basic PHP Authentication library that can be integrated in any PHP environment. The authentication logic is based on the use of JSON Web Tokens (JWT). The library does not store user passwords but only hashed values that cannot be reversed to produce the user password. Therefore password recovery is not possible, but passwords can be reset. User email addresses are encrypted before storing them. User names and user Id's are not encrypted for practical reasons. The login flow implements Multi Factor Authentication by sending a 4 digit code to the users email address before granting access. Other MFA implementations are not currently supported.
+Basic PHP Authentication library that can be integrated in any PHP environment. The authentication logic is based on the use of JSON Web Tokens (JWT). The library does not store user passwords but only hashed values that cannot be reversed to produce the user password. Therefore password recovery is not possible, but passwords can be reset. User email addresses are encrypted before storing them. User names and user Id's are not encrypted for practical reasons. The login flow implements Multi Factor Authentication by sending a 6 digit code to the users email address before granting access. Other MFA implementations are not currently supported.
+
+The library is based on server/client communictaion with 'application/json' as content type and will work best in that environment.
+
+Please note that the below documentation may be less elaborate than is desirable. This is being worked on, but in the meantime, please see the SinglePageApp example as guidance on how to implement the functionality.
 
 # Licence
 MIT
@@ -20,7 +24,7 @@ git clone https://codeberg.org/uncle-b/PHP_User_Auth.git
 ```
 2. **Run the setup script:**
 
-visit localhost/Auth/setupScript.php in your browser. 'localhost' can of course be replaced by your own domain if that is more convenient. If you follow the instructions, this will automatically create a dedicated SQL database, database user and accounts table required for the authentication logic to work.
+visit localhost/Auth/setupScript.php in your browser. 'localhost' can of course be replaced by your own domain if that is more convenient. If you follow the instructions, this will automatically create a dedicated SQL database, database user and accounts table required for the authentication logic to work. Also it will require you to provide an SMTP email address for sending system emails like email verification, MFA codes and password reset links. 
 
 3. **Install dependencies:**
 
@@ -33,10 +37,11 @@ If you do not have composer installed, you can also manually create a vendor/php
 
 4. **Testing**:
 
-explore the basic functionality with the basic template dialogs in the Auth/dialogs folder:
-- 'SignUp.php' provides a basic user registration flow.
-- 'SignIn.php' provides the basic login functionality.
-- 'passwordForgot' provides basic password recovery.
+explore the basic functionality with the example application included in the examples folder. Functionality demontrated in the example is:  
+- Basic user registration flow with email address verification.
+- Basic login functionality.
+- Basic password recovery.
+- Example of loading 'secret' data.
 
 # Documentation
 
@@ -56,7 +61,7 @@ In code this looks like:
     }
 ```
 
-At the font end, every request that requires authorization should carry a valid JWT token in a httponly cookie named 'X-AUTH-KEY'. This is automatically set after a successfull login and automatically returned to the server with every client request from a browser.
+At the front end, every request that requires authorization should carry a valid JWT token in a httponly cookie named 'X-AUTH-KEY'. This is automatically set after a successfull login and automatically returned to the server with every client request from a browser.
 
 Secondly, each request should carry a header named 'HTTP_X_AUTH_BODY_TOKEN' carrying the bodyToken returned as the value of a hidden input named 'bodyToken' after a successfull login.
 
@@ -81,6 +86,48 @@ async function authFetchJSON(url, request, bodyToken, method="POST"){
 ```
 Note that the above function is included in Auth/js/fetch.js
 Please see the examples folder for a working example single-page application.
+
+## API Endpoints:
+Your front end application should post to the following API endpoints for basic functionality. For detailed examples for the use of these endpoints, please see SinglePage.js in the examples folder.
+
+**Auth/api/signUp.php**
+JSON request fields:
+- userName (user name for the new account).
+- password (user password for the new account).
+- email (user email address).
+- csrfToken (if available)
+- validationUrl (optional customized email validation url).
+
+**Auth/api/emailValidate.php**
+JSON request fields:
+- account (account id to validate email address for).
+- key (validation key as received by email).
+
+**Auth/api/signIn.php**
+JSON request fields:
+- userName
+- password
+- csrfToken (if available)
+- mfa_code (on MFA submit only)
+- userId (on MFA sumbit only)
+
+**Auth/api/signIn.php**
+JSON request fields:
+- redirectUrl (optional url to reditrect to after sign out. Defaults to root).
+- onAllAccounts (optional boolean. TRUE will invalidate all active sessions).
+
+**Auth/api/passwordForgot.php**
+JSON request fields:
+- username
+- csrfToken (if available)
+- resetURL
+
+**Auth/api/passwordReset.php**
+JSON request fields:
+- account
+- token
+- newPassword
+- csrfToken (if available)
 
 ## Auth class methods
 
