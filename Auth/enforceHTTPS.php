@@ -6,7 +6,7 @@
  * environments.                                                                              *
  **********************************************************************************************/
 
-$auth_muteSetup = true; //Set this value to true to bypass https requirement.
+$auth_muteSetup = false; //Set this value to true to bypass https requirement.
 
 if($auth_muteSetup == true){
     error_log("WARNING: You are currently bypassing HTTPS encryption. This is not safe for production environments. See /Auth/enforceHTTPS.php to change this setting.");
