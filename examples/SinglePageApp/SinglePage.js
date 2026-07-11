@@ -91,11 +91,16 @@ let signUp = async () => {
     let pwd = getEl("pwd1");
     let eml = getEl("eml");
 
+    let valUrl = window.location.href
+    if(valUrl.substring(valUrl.length-1,1) === "/"){
+        valUrl = valUrl.substring(0, valUrl.length-1);
+    }
+
     let req = {
         userName: usr.value,
         password: pwd.value,
         email: eml.value,
-        validationUrl: window.location.hostname+"/examples/SinglePageApp"
+        validationUrl: valUrl
     }
 
     if (csrfToken){
@@ -105,7 +110,7 @@ let signUp = async () => {
     loaderMsg("Signing you up...")
     showPage("page-loader");
 
-    let url = "/Auth/api/SignUp.php";
+    let url = "../../Auth/api/SignUp.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken);
 
@@ -142,7 +147,7 @@ let signIn = async () => {
         showPage("page-loader");
 
 
-        let url = "/Auth/api/SignIn.php";
+        let url = "../../Auth/api/SignIn.php";
         let method = "POST";
         let res = await authFetchJSON(url, req, bodyToken);
 
@@ -206,7 +211,7 @@ let mfaComplete = async () => {
         loaderMsg("Checking MFA code...")
         showPage("page-loader");
 
-        let url = "/Auth/api/SignIn.php";
+        let url = "../../Auth/api/SignIn.php";
         let method = "POST";
         let res = await authFetchJSON(url, req, bodyToken);
 
@@ -234,7 +239,7 @@ let signOut = async () => {
     showPage("page-loader");
 
     let req = {};
-    let url = "/Auth/api/SignOut.php";
+    let url = "../../Auth/api/SignOut.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken, method);
 
@@ -287,7 +292,7 @@ let passwordForgot = async () => {
     loaderMsg("Sending reset link...");
     showPage("page-loader");
 
-    let url = "/Auth/api/passwordForgot.php";
+    let url = "../../Auth/api/passwordForgot.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken);
 
@@ -340,7 +345,7 @@ let passwordReset = async () => {
     loaderMsg("Resetting password...");
     showPage("page-loader");
 
-    let url = "/Auth/api/passwordReset.php";
+    let url = "../../Auth/api/passwordReset.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken);
 
@@ -373,7 +378,7 @@ let emailValidate = async () => {
     loaderMsg("Validating your email address.");
     showPage("page-loader");
 
-    let url = "/Auth/api/emailValidate.php";
+    let url = "../../Auth/api/emailValidate.php";
     let method = "POST";
     let res = await authFetchJSON(url, req, bodyToken);
 

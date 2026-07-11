@@ -239,11 +239,11 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
         // fwrite($gitFile, $txt);
         // fclose($gitFile);
 
-        //Create composer.json
-        // $composer = fopen($_SERVER["DOCUMENT_ROOT"]."/composer.json", "a+");
-        // $txt = '{"require": {"phpmailer/phpmailer": "^7.0.0"}}';
-        // fwrite($composer, $txt);
-        // fclose($composer);
+        // Create composer.json file in document root
+        $composer = fopen($_SERVER["DOCUMENT_ROOT"]."/composer.json", "a+");
+        $txt = "\n{\"require\": {\"phpmailer/phpmailer\": \"^7.0.0\"}}\n";
+        fwrite($composer, $txt);
+        fclose($composer);
 
         // Install composer dependencies
         // exec("composer update");
@@ -254,6 +254,15 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 'message' => 'Secure authentication is almost set up on this server. Please run "composer update" in the terminal of the server to install the required dependencies.'
             ]);
         }
+
+        $authDir = str_replace($_SERVER["DOCUMENT_ROOT"]."/","",getcwd());
+        $exmplDir = substr($authDir,0, strlen($authDir)-4)."examples/SinglePageApp/"; 
+        if(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'){
+            $protocol = "https://";
+        } else {
+            $protocol = "http://";
+        }
+        $lnk = $protocol . $_SERVER["SERVER_NAME"]."/".$exmplDir;
 
         ?>
         <!DOCTYPE html>
@@ -267,7 +276,7 @@ if(!isset($requestData["usr"]) && !isset($requestData["pwd"])){
                 <p>
                     Secure authentication is almost set up on this server. 
                     Please run "composer update" in the terminal of the server to install the required dependencies. After that, please test if the application is capable of sending emails through the specified SMTP server by running the <a href="emailTest.php">Auth/emailTest.php</a> script. 
-                    Please see the documentation for further use instructions or test the basic functionality with the <a href="/examples/SinglePageApp/">example application</a>.
+                    Please see the documentation for further use instructions or test the basic functionality with the <a href="<?php echo $lnk; ?>">example application</a>.
                 </p>
                 </div>
             </body>

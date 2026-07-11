@@ -4,7 +4,7 @@
         <link rel="stylesheet" href="SinglePage.css">
         <script src="validation.js"></script>
         <script src="SinglePage.js"></script>
-        <script src="/Auth/js/fetch.js"></script>
+        <script src="../../Auth/js/fetch.js"></script>
     </head>
     <body>
 
