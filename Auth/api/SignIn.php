@@ -1,6 +1,14 @@
 <?php
+// MUST BE FIRST LINE - Handle preflight
+include "preflight.php";
+
+error_log("executing script after preflight.php");
+
 header('Content-Type: application/json');
 include "../Auth2.php";
+
+error_log("executing script after Auth2.php");
+
 
 // Start session for CSRF protection
 $auth->startSession();

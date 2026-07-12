@@ -40,7 +40,15 @@ class Auth{
         $docRoot  = $_SERVER["DOCUMENT_ROOT"];
         $included_files = get_included_files();
         $pth = explode("/", $included_files[1]);
-        array_pop($pth);
+
+        for($i=0;$i<count($included_files);$i++){
+            $pth = explode("/", $included_files[$i]);
+            if($pth[count($pth)-1]==="Auth2.php"){
+                array_pop($pth);
+                break;
+            }
+        }
+
         $this->authDir = str_replace($docRoot, "", join("/",$pth));
         $this->authDir = substr($this->authDir, 1, strlen($this->authDir)-1);
 
@@ -50,6 +58,7 @@ class Auth{
 
         // if not, try to load them.
         } else {
+            
             $envFile = "$docRoot/$this->authDir/env/env.php";
             if(file_exists($envFile)){
                 // Validate env file permissions - should not be world-readable
@@ -507,6 +516,16 @@ class Auth{
         header("Referrer-Policy: strict-origin-when-cross-origin");
         // Permissions policy
         header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
+
+        // CORS headers for localhost development (different ports/subdomains)
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        if (preg_match('#^(http|https)://(localhost|127\.0\.0\.1|booth\.localhost)(:\d+)?$#i', $origin)) {
+            header("Access-Control-Allow-Origin: $origin");
+            header("Access-Control-Allow-Credentials: true");
+            header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+            header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Auth-Body-Token, X-CSRF-Token");
+        }
+
         // Content Security Policy - current host only
         header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'");
     }

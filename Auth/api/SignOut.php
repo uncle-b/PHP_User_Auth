@@ -1,4 +1,7 @@
 <?php 
+// MUST BE FIRST LINE - Handle preflight
+include "preflight.php";
+
 header('Content-Type: application/json');
 include "../Auth2.php";
 
